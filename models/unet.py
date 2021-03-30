@@ -198,18 +198,14 @@ class UNet(BaseModel):
         seg_outputs = []
         for d in range(len(self.conv_blocks_context) - 1):
             x = self.conv_blocks_context[d](x)
-            print(d, x.size())
             skips.append(x)
 
         x = self.conv_blocks_context[-1](x)
-        print(x.size())
 
         for u in range(len(self.tu)):
             x = self.tu[u](x)
             if u != len(self.tu) - 1:
-                print(u, x.size(), skips[-(u+1)].size())
                 x = torch.cat((x, skips[-(u + 1)]), dim=1)
-            print(u, x.size())
             x = self.conv_blocks_localization[u](x)
             seg_outputs.append(self.final_nonlin(self.seg_outputs[u](x)))
 
@@ -231,6 +227,7 @@ if __name__ == '__main__':
     network = UNet(
         **configs
     )
+    print(network)
 
-    summary(network, input_size=(2,1,64,64,64))  
+    summary(network, input_size=(2,1,512,512,256))  
 
