@@ -15,24 +15,31 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from neuronet.models.base_model import BaseModel
-from neuronnet.models.modules.modules import Upsample, ConvDropoutNormNonlin, InitWeights_He, StackedConvLayers
+from neuronet.models.modules.modules import Upsample, ConvDropoutNormNonlin, InitWeights_He, StackedConvLayers
 
 class UNet(BaseModel):
-    MAX_NUM_FILTERS_3D = 320
-    MAX_FILTERS_2D = 640
 
-    def __init__(self, input_channels, base_num_features, num_classes, num_pool, num_conv_per_stage=2,
-                 feat_map_mul_on_downscale=2, conv_op=nn.Conv2d,
-                 norm_op=nn.BatchNorm2d, norm_op_kwargs=None,
-                 dropout_op=nn.Dropout2d, dropout_op_kwargs=None,
-                 nonlin=nn.LeakyReLU, nonlin_kwargs=None, deep_supervision=True, dropout_in_localization=False,
-                 final_nonlin=lambda x: F.softmax(x,1), weightInitializer=InitWeights_He(1e-2), pool_op_kernel_sizes=None,
+    def __init__(self, input_channels=1, base_num_features=8, num_classes=2, num_conv_per_stage=2,
+        feat_map_mul_on_downscale=2, conv_op=nn.Conv3d,
+                 norm_op=nn.InstanceNorm3d, norm_op_kwargs={'eps':1e-5, 'affine':True},
+                 dropout_op=nn.Dropout3d, dropout_op_kwargs={'p':0, 'inplace': True},
+                 nonlin=nn.LeakyReLU, nonlin_kwargs={"negative_slope":1e-2, 'inplace':True}, deep_supervision=False, dropout_in_localization=False,
+                 final_nonlin=lambda x: x, weightInitializer=InitWeights_He(1e-2), pool_op_kernel_sizes=None,
                  conv_kernel_sizes=None,
-                 upscale_logits=False, convolutional_pooling=False, convolutional_upsampling=False,
-                 max_num_features=None, basic_block=ConvDropoutNormNonlin,
+                 upscale_logits=False, convolutional_pooling=True, convolutional_upsampling=True,
+                 max_num_features=256, basic_block=ConvDropoutNormNonlin,
                  seg_output_use_bias=False):
-
+        
         super(UNet, self).__init__()
+        conv_op = eval(conv_op)
+        norm_op = eval(norm_op)
+        dropout_op = eval(dropout_op)
+        nonlin = eval(nonlin)
+        final_nonlin = eval(final_nonlin)
+        weightInitializer = eval(weightInitializer)
+        basic_block = eval(basic_block)
+
+        num_pool = len(pool_op_kernel_sizes)
         self.convolutional_upsampling = convolutional_upsampling
         self.convolutional_pooling = convolutional_pooling
         # whether manually upscale the lateral supervision
@@ -243,36 +250,14 @@ class UNet(BaseModel):
 
 
 if __name__ == '__main__':
-    num_input_channels = 1
-    base_num_features = 8
-    num_classes = 2
-    pool_kernels = [(2,2,2), (2,2,2), (2,2,2), (2,2,2)]
-    conv_per_stage = 2
-    downscale = 2
-    conv_op = nn.Conv3d
-    norm_op = nn.InstanceNorm3d
-    norm_op_kwargs = {'eps': 1e-5, 'affine': True}
-    dropout_op = nn.Dropout2d
-    dropout_op_kwargs = {'p': 0, 'inplace': True}
-    net_nonlin = nn.LeakyReLU
-    net_nonlin_kwargs = {'negative_slope': 1e-2, 'inplace': True}
-    deep_supervision = False
-    dropout_in_localization = False
-    final_nonlin = lambda x: x
-    weightInitializer = InitWeights_He(1e-2)
-    conv_kernels = [(3,3,3),(3,3,3),(3,3,3),(3,3,3)]
-    upscale_logits = False
-    convolutional_pooling = True
-    convolutional_upsampling = True
+    import json
+
+    conf_file = 'configs/default_config.json'
+    with open(conf_file) as fp:
+        configs = json.load(fp)
+
     network = UNet(
-        num_input_channels, base_num_features, num_classes, 
-        len(pool_kernels), conv_per_stage, downscale, 
-        conv_op, norm_op, norm_op_kwargs, dropout_op,
-        dropout_op_kwargs, net_nonlin, net_nonlin_kwargs,
-        deep_supervision, dropout_in_localization, final_nonlin,
-        weightInitializer, pool_kernels, conv_kernels, 
-        upscale_logits, convolutional_pooling,
-        convolutional_upsampling
+        **configs
     )
 
     img = torch.randn(2,1,64,64,64)
@@ -281,4 +266,6 @@ if __name__ == '__main__':
     network = network.to(device)
     print(network)
     output = network(img)
+    print(output.size())
+    print(output.mean())
 

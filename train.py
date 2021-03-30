@@ -24,10 +24,12 @@ from neuronet.utils import util
 
 parser = argparse.ArgumentParser(
     description='Segmentator for Neuronal Image With Pytorch')
+# data specific
 parser.add_argument('--train_set', 
                     type=str, help='training set path')
 parser.add_argument('--val_set', 
                     type=str, help='val set path')
+# training specific
 parser.add_argument('--batch_size', default=2, type=int,
                     help='Batch size for training')
 parser.add_argument('--num_workers', default=4, type=int,
@@ -42,6 +44,12 @@ parser.add_argument('--momentum', default=0.9, type=float,
                     help='Momentum value for optim')
 parser.add_argument('--weight_decay', default=5e-4, type=float,
                     help='Weight decay for SGD')
+# network specific
+parser.add_argument('--input_channels', default=1, type=int,
+                    help='number of input image channels')
+parser.add_argument('--base_num_features', default=8, type=int,
+                    help='number of channels for the first layer')
+
 parser.add_argument('--save_folder', default='weights/',
                     help='Directory for saving checkpoint models')
 args = parser.parse_args()
@@ -65,7 +73,7 @@ def train():
     val_loader = ''
 
     # network initialization
-    net = ''    # explicit initialize
+    net = unet.UNet()    # explicit initialize
 
     net = net.to(device)
 
