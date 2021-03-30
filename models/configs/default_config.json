@@ -19,8 +19,6 @@
 "final_nonlin": "lambda x: x",
 "weightInitializer": "InitWeights_He(1e-2)",
 "upscale_logits": false,
-"convolutional_pooling": true,
-"convolutional_upsampling": true,
 "max_num_features": 256,
 "basic_block": "ConvDropoutNormNonlin",
 "seg_output_use_bias": false

@@ -18,6 +18,8 @@ from neuronet.models.base_model import BaseModel
 from neuronet.models.modules.modules import Upsample, ConvDropoutNormNonlin, InitWeights_He, StackedConvLayers
 
 class UNet(BaseModel):
+    MAX_NUM_FILTERS_3D = 320
+    MAX_FILTERS_2D = 640
 
     def __init__(self, input_channels=1, base_num_features=8, num_classes=2, num_conv_per_stage=2,
         feat_map_mul_on_downscale=2, conv_op=nn.Conv3d,
@@ -25,8 +27,7 @@ class UNet(BaseModel):
                  dropout_op=nn.Dropout3d, dropout_op_kwargs={'p':0, 'inplace': True},
                  nonlin=nn.LeakyReLU, nonlin_kwargs={"negative_slope":1e-2, 'inplace':True}, deep_supervision=False, dropout_in_localization=False,
                  final_nonlin=lambda x: x, weightInitializer=InitWeights_He(1e-2), pool_op_kernel_sizes=None,
-                 conv_kernel_sizes=None,
-                 upscale_logits=False, convolutional_pooling=True, convolutional_upsampling=True,
+                 conv_kernel_sizes=None, upscale_logits=False, 
                  max_num_features=256, basic_block=ConvDropoutNormNonlin,
                  seg_output_use_bias=False):
         
@@ -40,8 +41,6 @@ class UNet(BaseModel):
         basic_block = eval(basic_block)
 
         num_pool = len(pool_op_kernel_sizes)
-        self.convolutional_upsampling = convolutional_upsampling
-        self.convolutional_pooling = convolutional_pooling
         # whether manually upscale the lateral supervision
         self.upscale_logits = upscale_logits
         if nonlin_kwargs is None:
@@ -111,52 +110,23 @@ class UNet(BaseModel):
         input_features = input_channels
 
         for d in range(num_pool):
-            # determine the first stride
-            # The first block can also be strided convoluton
-            if self.convolutional_pooling:
-                first_stride = pool_op_kernel_sizes[d]
-            else:
-                first_stride = None
+            first_stride = pool_op_kernel_sizes[d]
 
             self.conv_kwargs['kernel_size'] = self.conv_kernel_sizes[d]
             self.conv_kwargs['padding'] = self.conv_pad_sizes[d]
             # add convolutions
-            self.conv_blocks_context.append(StackedConvLayers(input_features, output_features, num_conv_per_stage,
-                                                              self.conv_op, self.conv_kwargs, self.norm_op,
-                                                              self.norm_op_kwargs, self.dropout_op,
-                                                              self.dropout_op_kwargs, self.nonlin, self.nonlin_kwargs,
-                                                              first_stride, basic_block=basic_block))
-            if not self.convolutional_pooling:
-                self.td.append(pool_op(pool_op_kernel_sizes[d]))
+            self.conv_blocks_context.append(
+                StackedConvLayers(input_features, output_features, num_conv_per_stage,
+                  self.conv_op, self.conv_kwargs, self.norm_op,
+                  self.norm_op_kwargs, self.dropout_op,
+                  self.dropout_op_kwargs, self.nonlin, self.nonlin_kwargs,
+                  first_stride, basic_block=basic_block))
+
             input_features = output_features
             output_features = int(np.round(output_features * feat_map_mul_on_downscale))
 
             output_features = min(output_features, self.max_num_features)
 
-        # now the bottleneck.
-        # determine the first stride
-        if self.convolutional_pooling:
-            first_stride = pool_op_kernel_sizes[-1]
-        else:
-            first_stride = None
-
-        # the output of the last conv must match the number of features from the skip connection if we are not using
-        # convolutional upsampling. If we use convolutional upsampling then the reduction in feature maps will be
-        # done by the transposed conv
-        if self.convolutional_upsampling:
-            final_num_features = output_features
-        else:
-            final_num_features = self.conv_blocks_context[-1].output_channels
-
-        self.conv_kwargs['kernel_size'] = self.conv_kernel_sizes[-1]
-        self.conv_kwargs['padding'] = self.conv_pad_sizes[-1]
-        self.conv_blocks_context.append(nn.Sequential(
-            StackedConvLayers(input_features, output_features, num_conv_per_stage - 1, self.conv_op, self.conv_kwargs,
-                              self.norm_op, self.norm_op_kwargs, self.dropout_op, self.dropout_op_kwargs, self.nonlin,
-                              self.nonlin_kwargs, first_stride, basic_block=basic_block),
-            StackedConvLayers(output_features, final_num_features, 1, self.conv_op, self.conv_kwargs,
-                              self.norm_op, self.norm_op_kwargs, self.dropout_op, self.dropout_op_kwargs, self.nonlin,
-                              self.nonlin_kwargs, basic_block=basic_block)))
 
         # if we don't want to do dropout in the localization pathway then we set the dropout prob to zero here
         if not dropout_in_localization:
@@ -165,36 +135,34 @@ class UNet(BaseModel):
 
         # now lets build the localization pathway
         for u in range(num_pool):
-            nfeatures_from_down = final_num_features
-            nfeatures_from_skip = self.conv_blocks_context[
-                -(2 + u)].output_channels  # self.conv_blocks_context[-1] is bottleneck, so start with -2
-            n_features_after_tu_and_concat = nfeatures_from_skip * 2
-
-            # the first conv reduces the number of features to match those of skip
-            # the following convs work on that number of features
-            # if not convolutional upsampling then the final conv reduces the num of features again
-            if u != num_pool - 1 and not self.convolutional_upsampling:
-                final_num_features = self.conv_blocks_context[-(3 + u)].output_channels
+            if u == 0:
+                # the first upsampling layer is not skip connected
+                input_channels_u = self.conv_blocks_context[-(1+u)].output_channels
+                output_channels_u = self.conv_blocks_context[-(1+u)].input_channels
+                input_channels_c = output_channels_u * 2
+                output_channels_c = self.conv_blocks_context[-(1+u)].input_channels
+            elif u == num_pool - 1:
+                # the last layer
+                input_channels_u = output_channels_c
+                output_channels_u = base_num_features // 2
+                input_channels_c = output_channels_u
+                output_channels_c = output_channels_u
             else:
-                final_num_features = nfeatures_from_skip
-
-            if not self.convolutional_upsampling:
-                self.tu.append(Upsample(scale_factor=pool_op_kernel_sizes[-(u + 1)], mode=upsample_mode))
-            else:
-                self.tu.append(transpconv(nfeatures_from_down, nfeatures_from_skip, pool_op_kernel_sizes[-(u + 1)],
-                                          pool_op_kernel_sizes[-(u + 1)], bias=False))
+                input_channels_u = output_channels_c
+                output_channels_u = self.conv_blocks_context[-(1+u)].input_channels
+                input_channels_c = output_channels_u * 2
+                output_channels_c = self.conv_blocks_context[-(1+u)].input_channels
 
             self.conv_kwargs['kernel_size'] = self.conv_kernel_sizes[- (u + 1)]
             self.conv_kwargs['padding'] = self.conv_pad_sizes[- (u + 1)]
+            self.tu.append(transpconv(input_channels_u, output_channels_u, pool_op_kernel_sizes[-(u + 1)],
+                                          pool_op_kernel_sizes[-(u + 1)], bias=False))
+          
             self.conv_blocks_localization.append(nn.Sequential(
-                StackedConvLayers(n_features_after_tu_and_concat, nfeatures_from_skip, num_conv_per_stage - 1,
+                StackedConvLayers(input_channels_c, output_channels_c, num_conv_per_stage - 1,
                                   self.conv_op, self.conv_kwargs, self.norm_op, self.norm_op_kwargs, self.dropout_op,
-                                  self.dropout_op_kwargs, self.nonlin, self.nonlin_kwargs, basic_block=basic_block),
-                StackedConvLayers(nfeatures_from_skip, final_num_features, 1, self.conv_op, self.conv_kwargs,
-                                  self.norm_op, self.norm_op_kwargs, self.dropout_op, self.dropout_op_kwargs,
-                                  self.nonlin, self.nonlin_kwargs, basic_block=basic_block)
-            ))
-
+                                  self.dropout_op_kwargs, self.nonlin, self.nonlin_kwargs, basic_block=basic_block)))
+            
         for ds in range(len(self.conv_blocks_localization)):
             self.seg_outputs.append(conv_op(self.conv_blocks_localization[ds][-1].output_channels, num_classes,
                                             1, 1, 0, 1, 1, seg_output_use_bias))
@@ -230,15 +198,18 @@ class UNet(BaseModel):
         seg_outputs = []
         for d in range(len(self.conv_blocks_context) - 1):
             x = self.conv_blocks_context[d](x)
+            print(d, x.size())
             skips.append(x)
-            if not self.convolutional_pooling:
-                x = self.td[d](x)
 
         x = self.conv_blocks_context[-1](x)
+        print(x.size())
 
         for u in range(len(self.tu)):
             x = self.tu[u](x)
-            x = torch.cat((x, skips[-(u + 1)]), dim=1)
+            if u != len(self.tu) - 1:
+                print(u, x.size(), skips[-(u+1)].size())
+                x = torch.cat((x, skips[-(u + 1)]), dim=1)
+            print(u, x.size())
             x = self.conv_blocks_localization[u](x)
             seg_outputs.append(self.final_nonlin(self.seg_outputs[u](x)))
 
@@ -251,6 +222,7 @@ class UNet(BaseModel):
 
 if __name__ == '__main__':
     import json
+    from torchinfo import summary
 
     conf_file = 'configs/default_config.json'
     with open(conf_file) as fp:
@@ -260,12 +232,5 @@ if __name__ == '__main__':
         **configs
     )
 
-    img = torch.randn(2,1,64,64,64)
-    device = torch.device('cuda:0')
-    img = img.to(device)
-    network = network.to(device)
-    print(network)
-    output = network(img)
-    print(output.size())
-    print(output.mean())
+    summary(network, input_size=(2,1,64,64,64))  
 
