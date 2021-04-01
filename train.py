@@ -45,10 +45,9 @@ parser.add_argument('--momentum', default=0.9, type=float,
 parser.add_argument('--weight_decay', default=5e-4, type=float,
                     help='Weight decay for SGD')
 # network specific
-parser.add_argument('--input_channels', default=1, type=int,
-                    help='number of input image channels')
-parser.add_argument('--base_num_features', default=8, type=int,
-                    help='number of channels for the first layer')
+parser.add_argument('--net_config', default="./models/configs/default_config.json",
+                    type=str,
+                    help='json file defining the network configurations')
 
 parser.add_argument('--save_folder', default='weights/',
                     help='Directory for saving checkpoint models')
@@ -73,9 +72,14 @@ def train():
     val_loader = ''
 
     # network initialization
-    net = unet.UNet()    # explicit initialize
+    with open(args.net_config) as fp:
+        net_configs = json.load(fp)
+        model = unet.UNet(**net_configs)
+        print('\n' + '='*10 + 'Network Structure' + '='*10)
+        print(model)
+        print('='*30 + '\n')
 
-    net = net.to(device)
+    model = model.to(device)
 
     # optimizer & loss
     optimizer = optim
