@@ -336,7 +336,7 @@ class GenericPreprocessor(object):
     def dataset_split(self, task_dir, val_ratio=0.1, test_ratio=0.1, seed=1024, img_ext='npy', lab_ext='swc'):
         samples = []
         for imgfile in glob.glob(os.path.join(task_dir, f'*{img_ext}')):
-            labfile = f'{imgfile[:len(img_ext)]}{lab_ext}'
+            labfile = f'{imgfile[:-len(img_ext)]}{lab_ext}'
             samples.append((imgfile, labfile))
         # data splitting
         num_tot = len(samples)
