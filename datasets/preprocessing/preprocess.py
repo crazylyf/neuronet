@@ -24,6 +24,7 @@ from copy import deepcopy
 import SimpleITK as sitk
 from batchgenerators.utilities.file_and_folder_operations import maybe_mkdir_p
 from multiprocessing.pool import Pool
+import pickle
 
 from swc_handler import parse_swc, write_swc
 from path_util import get_file_prefix
@@ -292,9 +293,12 @@ class GenericPreprocessor(object):
         # normalize the image
         image = self.normalize(image, mask=None)
         # write the image and tree as well
-        np.save(imgfile_out, image)
+        np.savez_compressed(imgfile_out, data=image.astype(np.float32))
+        #np.save(imgfile_out, image.astype(np.float32))
         if tree is not None:
             write_swc(tree, swcfile_out)
+            #with open(swcfile_out, 'wb') as fp:
+            #    pickle.dump(tree, fp)
 
     def run(self, data_dir, spacing_file, output_dir, is_train=True, num_threads=8):
         print('Processing for dataset, should be run at least once for each dataset!')
@@ -314,24 +318,24 @@ class GenericPreprocessor(object):
         for imgfile, swcfile, spacing in data_list:
             prefix = get_file_prefix(imgfile)
             #print(imgfile, swcfile)
-            imgfile_out = os.path.join(output_dir, f'{prefix}.npy')
+            imgfile_out = os.path.join(output_dir, f'{prefix}.npz')
+            #swcfile_out = os.path.join(output_dir, f'{prefix}.pkl')
+            #imgfile_out = os.path.join(output_dir, f'{prefix}.npy')
             swcfile_out = os.path.join(output_dir, f'{prefix}.swc')
             args = imgfile, swcfile, imgfile_out, swcfile_out, spacing, target_spacing
             args_list.append(args)
 
-        for args in args_list:
-            self._preprocess_sample(*args)
 
         # execute in parallel
-        #pt = Pool(num_threads)
-        #pt.starmap(self._preprocess_sample, args_list)
-        #pt.close()
-        #pt.join()
+        pt = Pool(num_threads)
+        pt.starmap(self._preprocess_sample, args_list)
+        pt.close()
+        pt.join()
 
 
     def dataset_split(self, task_dir, val_ratio=0.1, test_ratio=0.1, seed=1024, img_ext='npy', lab_ext='swc'):
         samples = []
-        for imgfile in glob.glob(os.path.join(task_dir, '*.npy')):
+        for imgfile in glob.glob(os.path.join(task_dir, f'*{img_ext}')):
             labfile = f'{imgfile[:len(img_ext)]}{lab_ext}'
             samples.append((imgfile, labfile))
         # data splitting
@@ -345,10 +349,10 @@ class GenericPreprocessor(object):
         np.random.shuffle(samples)
         splits = {}
         splits['train_samples'] = samples[:num_train]
-        splits['val_samples'] = samples[num_train:num_train+val]
+        splits['val_samples'] = samples[num_train:num_train+num_val]
         splits['test_samples'] = samples[-num_test:]
         # write to file
-        with open('data_splits.pkl', 'wb') as fp:
+        with open(os.path.join(output_dir, 'data_splits.pkl'), 'wb') as fp:
             pickle.dump(splits, fp)
         
 
@@ -360,7 +364,7 @@ if __name__ == '__main__':
     is_train = True
     num_threads = 8
     gp = GenericPreprocessor()
-    gp.run(data_dir, spacing_file, output_dir, is_train=is_train, num_threads=num_threads)
-    #gp.dataset_split(output_dir, val_ratio=0.1, test_ratio=0.1, seed=1024, img_ext='npy', lab_ext='swc')
+    #gp.run(data_dir, spacing_file, output_dir, is_train=is_train, num_threads=num_threads)
+    gp.dataset_split(output_dir, val_ratio=0.1, test_ratio=0.1, seed=1024, img_ext='npz', lab_ext='swc')
     
 
