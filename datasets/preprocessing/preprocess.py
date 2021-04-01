@@ -22,8 +22,11 @@ from skimage.transform import resize
 from scipy.ndimage.interpolation import map_coordinates
 from copy import deepcopy
 import SimpleITK as sitk
+from batchgenerators.utilities.file_and_folder_operations import maybe_mkdir_p
+from multiprocessing.pool import Pool
 
 from swc_handler import parse_swc, write_swc
+from path_util import get_file_prefix
 
 def soma_labelling(image, z_ratio=0.4, r=7, thresh=220, label=255):
     dz, dy, dx = image.shape
@@ -115,7 +118,7 @@ def trim_swc(tree_orig, imgshape, keep_candiate_points=True):
 
     return tree_trim
 
-def load_spacing(spacing_file):
+def load_spacing(spacing_file, zyx_order=True):
     spacing_dict = {}
     with open(spacing_file) as fp:
         fp.readline()    # skip the first line
@@ -124,11 +127,14 @@ def load_spacing(spacing_file):
             if not line: continue
 
             brain_id, xs, ys, zs = line.split(',')
-            spacing_dict[int(brain_id)] = np.array([float(xs), float(ys), float(zs)])
+            if zyx_order:
+                spacing_dict[int(brain_id)] = np.array([float(zs), float(ys), float(xs)])
+            else:
+                spacing_dict[int(brain_id)] = np.array([float(xs), float(ys), float(zs)])
     
     return spacing_dict
 
-def load_data(data_dir, spacing_file):
+def load_data(data_dir, spacing_file, is_train=True):
     '''data_dir = '/home/lyf/data/seu_mouse/crop_data/dendriteImageSecR'
     spacing_file = '/home/lyf/data/seu_mouse/crop_data/scripts/AllbrainResolutionInfo.csv'
     data_list = load_data(data_dir, spacing_file)
@@ -145,9 +151,11 @@ def load_data(data_dir, spacing_file):
         spacing = spacing_dict[int(brain_id)]
         swc_dir = os.path.join(data_dir, 'swc', brain_id)
         for imgfile in glob.glob(os.path.join(brain_dir, '*.tiff')):
-            imgname = os.path.split(imgfile)[-1]
-            prefix = os.path.splitext(imgname)[0]
-            swc_file = os.path.join(swc_dir, brain_id, '{:s}.swc'.format(prefix))
+            prefix = get_file_prefix(imgfile)
+            if is_train:
+                swc_file = os.path.join(swc_dir, f'{prefix}.swc')
+            else:
+                swc_file = None
             data_list.append((imgfile, swc_file, spacing))
 
     return data_list
@@ -168,6 +176,7 @@ class GenericPreprocessor(object):
     def remove_nans(self, data):
         # inplace modification of nans
         data[np.isnan(data)] = 0
+        return data
 
     def normalize(self, data, mask=None):
         assert data.ndim == 4, "image must in 4 dimension: c,z,y,x"
@@ -208,11 +217,13 @@ class GenericPreprocessor(object):
         data = data.astype(np.float32)  # float32 is sufficient
         shape = np.array(data[0].shape)
         new_shape = np.round(((np.array(orig_spacing) / np.array(target_spacing)).astype(np.float32) * shape)).astype(int)
-        print(new_shape)
+        #print(new_shape)
         # do resizing
         if np.all(shape == new_shape):
             print('no resampling necessary')
             return data, tree
+        else:
+            print('resampling...')
 
         if separate_z:
             z_axis = 0
@@ -248,33 +259,108 @@ class GenericPreprocessor(object):
                 new_data.append(resize(data[c], new_shape, order, cval=0, mode='edge'))
             new_data = np.vstack(new_data)
 
-        # processing for the tree, scales in (z,y,x) order
-        scales = np.array(orig_spacing) / np.array(target_spacing)
-        cz0, cy0, cx0 = shape / 2.
-        cz, cy, cx = new_shape / 2.
-        new_tree = []
-        for leaf in tree:
-            idx, type_, x, y, z, rad, pid = leaf
-            x = (x - cx0) * scales[2] + cx
-            y = (y - cy0) * scales[1] + cy
-            z = (z - cz0) * scales[0] + cz
-            new_tree.append((idx, type_, x, y, z, rad, pid))
+        if tree is not None:
+            # processing for the tree, scales in (z,y,x) order
+            scales = np.array(orig_spacing) / np.array(target_spacing)
+            cz0, cy0, cx0 = shape / 2.
+            cz, cy, cx = new_shape / 2.
+            new_tree = []
+            for leaf in tree:
+                idx, type_, x, y, z, rad, pid = leaf
+                x = (x - cx0) * scales[2] + cx
+                y = (y - cy0) * scales[1] + cy
+                z = (z - cz0) * scales[0] + cz
+                new_tree.append((idx, type_, x, y, z, rad, pid))
+            
+            return new_data.astype(dtype), new_tree
+        else:
+            return new_data.astype(dtype), tree
+
+    def _preprocess_sample(self, imgfile, swcfile, imgfile_out, swcfile_out, spacing, target_spacing):
+        print(f'--> Processing for image: {imgfile}')
+        # load the image and annotated tree
+        image = sitk.GetArrayFromImage(sitk.ReadImage(imgfile))
+        if image.ndim == 3:
+            image = image[None]
+        tree = None
+        if swcfile is not None:
+            tree = parse_swc(swcfile)
+        # remove nans
+        image = self.remove_nans(image)
+        # resampling to target spacing
+        image, tree = self.resampling(image, tree, spacing, target_spacing)
+        # normalize the image
+        image = self.normalize(image, mask=None)
+        # write the image and tree as well
+        np.save(imgfile_out, image)
+        if tree is not None:
+            write_swc(tree, swcfile_out)
+
+    def run(self, data_dir, spacing_file, output_dir, is_train=True, num_threads=8):
+        print('Processing for dataset, should be run at least once for each dataset!')
+        # get all files
+        data_list = load_data(data_dir, spacing_file, is_train=is_train)
+        print(f'Total number of samples found: {len(data_list)}')
+        # estimate the target spacing
+        spacings = [spacing for _,_,spacing in data_list]
+        # assume spacing in format[z,y,x]
+        spacings = sorted(spacings, key=lambda x: x.prod())
+        target_spacing = spacings[len(spacings) // 2]
+
+
+        maybe_mkdir_p(output_dir)
+        # execute preprocessing
+        args_list = []
+        for imgfile, swcfile, spacing in data_list:
+            prefix = get_file_prefix(imgfile)
+            #print(imgfile, swcfile)
+            imgfile_out = os.path.join(output_dir, f'{prefix}.npy')
+            swcfile_out = os.path.join(output_dir, f'{prefix}.swc')
+            args = imgfile, swcfile, imgfile_out, swcfile_out, spacing, target_spacing
+            args_list.append(args)
+
+        for args in args_list:
+            self._preprocess_sample(*args)
+
+        # execute in parallel
+        #pt = Pool(num_threads)
+        #pt.starmap(self._preprocess_sample, args_list)
+        #pt.close()
+        #pt.join()
+
+
+    def dataset_split(self, task_dir, val_ratio=0.1, test_ratio=0.1, seed=1024, img_ext='npy', lab_ext='swc'):
+        samples = []
+        for imgfile in glob.glob(os.path.join(task_dir, '*.npy')):
+            labfile = f'{imgfile[:len(img_ext)]}{lab_ext}'
+            samples.append((imgfile, labfile))
+        # data splitting
+        num_tot = len(samples)
+        num_val = int(round(num_tot * val_ratio))
+        num_test = int(round(num_tot * test_ratio))
+        num_train = num_tot - num_val - num_test
+        print(f'Number of samples of total/train/val/test are {num_tot}/{num_train}/{num_val}/{num_test}')
         
-        return new_data.astype(dtype), new_tree
-
-    def _run_internal(self):
-        pass
-
-    def run(self):
-        pass
-
-
-    def dataset_split(self):
-        pass
+        np.random.seed(seed)
+        np.random.shuffle(samples)
+        splits = {}
+        splits['train_samples'] = samples[:num_train]
+        splits['val_samples'] = samples[num_train:num_train+val]
+        splits['test_samples'] = samples[-num_test:]
+        # write to file
+        with open('data_splits.pkl', 'wb') as fp:
+            pickle.dump(splits, fp)
+        
 
         
 if __name__ == '__main__':
-    
-
+    data_dir = '/home/lyf/data/seu_mouse/crop_data/dendriteImageSecR'
+    spacing_file = '/home/lyf/data/seu_mouse/crop_data/scripts/AllbrainResolutionInfo.csv'
+    output_dir = '/home/lyf/Research/auto_trace/neuronet/data/task0001_17302'
+    is_train = True
+    num_threads = 8
+    gp = GenericPreprocessor()
+    gp.run(data_dir, spacing_file, output_dir, is_train=is_train, num_threads=num_threads)
+    #gp.dataset_split(output_dir, val_ratio=0.1, test_ratio=0.1, seed=1024, img_ext='npy', lab_ext='swc')
     
 
