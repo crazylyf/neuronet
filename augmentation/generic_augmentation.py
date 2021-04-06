@@ -16,6 +16,8 @@ from scipy.ndimage import gaussian_filter
 import SimpleITK as sitk
 from batchgenerators.augmentations.utils import create_zero_centered_coordinate_mesh, elastic_deform_coordinates, interpolate_img, rotate_coords_2d, rotate_coords_3d, scale_coords, elastic_deform_coordinates_2, resize_multichannel_image
 
+from neuronet.utils import image_util
+
 class Compose(object):
     """Composes several augmentations together.
     Args:
@@ -52,7 +54,9 @@ class RandomSaturation(AbstractTransform):
 
     def __call__(self, img, tree=None, spacing=None):
         if np.random.random() < self.p:
-            img *= random.uniform(self.lower, self.upper)
+            sf = np.random.uniform(self.lower, self.upper)
+            print(f'RandomSaturation with factor: {sf}')
+            img *= sf
 
         return img, tree, spacing
 
@@ -65,8 +69,9 @@ class RandomBrightness(AbstractTransform):
     def __call__(self, img, tree=None, spacing=None):
         if np.random.random() < self.p:
             img_flat = img.reshape((img.shape[0],-1))
-            mm = img_flat.max() - img_flat.min()
+            mm = img_flat.max(axis=1) - img_flat.min(axis=1)
             dmm = np.random.uniform(-self.dratio, self.dratio) * mm
+            print(f'RandomBrightness with shift: {dmm}')
             img += dmm.reshape((mm.shape[0],1,1,1))
 
         return img, tree, spacing
@@ -79,11 +84,15 @@ class RandomGaussianNoise(AbstractTransform):
     def __call__(self, img, tree=None, spacing=None):
         if np.random.random() < self.p:
             var = np.random.uniform(0, self.max_var)
-            img += np.random.normal(0, var, size=img.shape)
+            img_flat = img.reshape((img.shape[0],-1))
+            mm = img_flat.max(axis=1) - img_flat.min(axis=1)
+            noise = np.random.normal(0, var, size=img.shape) * mm.reshape((-1,1,1,1))
+            print(f'RandomGaussianNoise with var: {var}')
+            img += noise
         return img, tree, spacing
 
 class RandomGaussianBlur(AbstractTransform):
-    def __init__(self, kernels=(0,1,2), p=0.5):
+    def __init__(self, kernels=(0,1), p=0.5):
         super(RandomGaussianBlur, self).__init__(p)
         self.kernels = kernels
     
@@ -93,9 +102,11 @@ class RandomGaussianBlur(AbstractTransform):
         if np.random.random() < self.p:
             idx = np.random.randint(len(self.kernels))
             kernel = self.kernels[idx]
-            kernel_z = max(int(round(kernel * (spacing[1] + spacing[2]) / spacing[0] + 1)), 1)
+            kernel_z = kernel * (spacing[1] + spacing[2]) / spacing[0] / 2
+            kernel_z = max(int(round(kernel_z)) * 2 + 1, 1)
             kernel_xy = kernel * 2 + 1
             sigmas = (kernel_z, kernel_xy, kernel_xy)
+            print(f'RandomGaussianBlur with sigmas: {sigmas}')
 
             for c in range(img.shape[0]):
                 img[c] = gaussian_filter(img[c], sigma=sigmas)
@@ -108,7 +119,7 @@ class RandomResample(AbstractTransform):
         self.zoom_range = zoom_range
         self.order_down = order_down
         self.order_up = order_up
-        self.per_channel = per_channel
+        self.per_axis = per_axis
         
     def __call__(self, img, tree=None, spacing=None):
         if np.random.random() < self.p:
@@ -116,15 +127,16 @@ class RandomResample(AbstractTransform):
                 img = img.astype(np.float32)
 
             shape = np.array(img[0].shape)
-            if per_axis:
+            if self.per_axis:
                 zoom = np.random.uniform(*self.zoom_range, size=len(shape))
             else:
                 zoom = np.random.uniform(*self.zoom_range)
             target_shape = np.round(shape * zoom).astype(np.int)
 
+            print(f'RandomSample with zoom factor: {zoom}')
             for c in range(img.shape[0]):
                 downsampled = resize(img[c], target_shape, order=self.order_down, mode='edge', anti_aliasing=False)
-                img[c] = resize(downsampled, shape, order=self.order_up, mode='edg', anti_aliasing=False)
+                img[c] = resize(downsampled, shape, order=self.order_up, mode='edge', anti_aliasing=False)
     
         return img, tree, spacing
             
@@ -148,42 +160,85 @@ class RandomMirror(AbstractTransform):
                 img = img[:,:,:,::-1]
             else:
                 raise ValueError('Number of dimension should not exceed 4')
-            # processing tree structure
-            shape = img[0].shape
-            shape_axis = shape[axis-1]
-            new_tree = []
-            if axis == 1:
-                for leaf in tree:
-                    idx, type_, x, y, z, r, p = leaf
-                    z = shape_axis - z
-                    new_tree.append((idx,type_,x,y,z,r,p))
-            elif axis == 2:
-                for leaf in tree:
-                    idx, type_, x, y, z, r, p = leaf
-                    y = shape_axis - y
-                    new_tree.append((idx,type_,x,y,z,r,p))
-            else:
-                for leaf in tree:
-                    idx, type_, x, y, z, r, p = leaf
-                    x = shape_axis - x
-                    new_tree.append((idx,type_,x,y,z,r,p))
-            tree = new_tree
+            if tree is not None:
+                # processing tree structure
+                shape = img[0].shape
+                shape_axis = shape[axis-1]
+                new_tree = []
+                if axis == 1:
+                    for leaf in tree:
+                        idx, type_, x, y, z, r, p = leaf
+                        z = shape_axis - z
+                        new_tree.append((idx,type_,x,y,z,r,p))
+                elif axis == 2:
+                    for leaf in tree:
+                        idx, type_, x, y, z, r, p = leaf
+                        y = shape_axis - y
+                        new_tree.append((idx,type_,x,y,z,r,p))
+                else:
+                    for leaf in tree:
+                        idx, type_, x, y, z, r, p = leaf
+                        x = shape_axis - x
+                        new_tree.append((idx,type_,x,y,z,r,p))
+                tree = new_tree
+            print(f'Mirroring for axis: {axis}')
         return img, tree, spacing
                 
 
-'''
-The following geometric transformation can be composed into a unique geometric transformation
-class RandomScale(object):
+#The following geometric transformation can be composed into a unique geometric transformation
+class RandomScale(AbstractTransform):
+    def __init__(self, p=0.5):
+        super(AbstractTransform, self).__init__(p)
 
-class RandomCrop(object)
+    def __call__(self, img, tree=None, spacing=None):
+        raise NotImplementedError
+    
+class RandomCrop(AbstractTransform):
+    def __init__(self, p=0.5, crop_scale=0.75):
+        super(RandomCrop, self).__init__(p)
+        self.crop_scale = crop_scale
 
-class RandomPadding(object)
+    def __call__(self, img, tree=None, spacing=None):
+        if np.random.random() > self.p:
+            return img, tree, spacing
+        
+        raise NotImplementedError
+          
+        img_crop,sz,sy,sx = image_util.random_crop_3D_image(img, self.crop_size)
+        # processing the tree
+        new_tree = []
+        for leaf in tree:
+            idx, type_, x, y, z, r, p = leaf
+            x = x - sx
+            y = y - sy
+            z = z - sz
+            new_tree.append((idx,type_,x,y,z,r,p)) 
 
-class RandomRotation(object)
+        return img_crop, new_tree, spacing
 
-class RandomShift(object)
-'''
+class RandomPadding(AbstractTransform):
+    def __init__(self, p=0.5):
+        super(RandomPadding, self).__init__(p)
 
+    def __call__(self, img, tree=None, spacing=None):
+        raise NotImplementedError
+
+class RandomRotation(AbstractTransform):
+    def __init__(self, p=0.5):
+        super(RandomRotation, self).__init__(p)
+        
+    def __call__(self, img, tree=None, spacing=None):
+        raise NotImplementedError
+
+class RandomShift(AbstractTransform):
+    def __init__(self, p=0.5):
+        super(RandomShift, self).__init__(p)
+
+    def __call__(self, img, tree=None, spacing=None):
+        raise NotImplementedError
+
+
+# This implementation is very slow, as it use dense interpolation, instead of matrix production
 class RandomGeometric(AbstractTransform):
     def __init__(self, patch_size, p=1., patch_center_dist_from_border=30,
                  p_elastic_deform=0.2, deformation_scale=(0, 0.25),
@@ -314,6 +369,20 @@ class RandomGeometric(AbstractTransform):
             img_p = d
         return img_p, tree, spacing
 
+class InstanceAugmentation(object):
+    def __init__(self, p=0.2):
+        self.augment = Compose([
+            RandomSaturation(p=p),
+            RandomBrightness(p=p),
+            #RandomGaussianNoise(p=p),
+            RandomGaussianBlur(p=p),
+            RandomResample(p=p),
+            RandomMirror(p=p)
+        ])
+
+    def __call__(self, img, tree=None, spacing=None):
+        return self.augment(img, tree, spacing)
+
 
 if __name__ == '__main__':
     import time
@@ -331,7 +400,7 @@ if __name__ == '__main__':
     print(f'Statistics of original image: {img.mean()}, {img.std()}, {img.min()}, {img.max()}')
     tree = None
     spacing = [1.0, 0.2, 0.2]
-    patch_size = [256, 512, 512]    # in z,y,x order
+    '''patch_size = [256, 512, 512]    # in z,y,x order
     p_rotation = 0.0
     angle_x = (0, 2*np.pi)
     angle_y = (0, 2*np.pi)
@@ -348,7 +417,10 @@ if __name__ == '__main__':
                  p_axis_scale=0.5,
                  border_mode='nearest', border_cval=0,
                  order=3, random_crop=random_crop)
+    '''
     t0 = time.time()
+    
+    aug = InstanceAugmentation(p=1.0)
     img_new, tree_new, spacing = aug(img, tree, spacing)
     print(f'Augmented image statistics: {img_new.mean()}, {img_new.std()}, {img_new.min()}, {img_new.max()}')
     print(f'Timed used: {time.time()-t0}s')

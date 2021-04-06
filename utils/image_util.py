@@ -30,3 +30,33 @@ def unnormalize_normal(image4d, output_range=(0,255)):
         image4d[c] = (image4d[c] - m1) * (or2 - or1) / (m2 - m1 + 1e-8) + or1
     return image4d
 
+def random_crop_3D_image(img, crop_size):
+    if type(crop_size) not in (tuple, list):
+        crop_size = [crop_size] * len(img.shape)
+    else:
+        assert len(crop_size) == len(
+            img.shape), "If you provide a list/tuple as center crop make sure it has the same len as your data has dims (3d)"
+
+    if crop_size[0] < img.shape[0]:
+        lb_x = np.random.randint(0, img.shape[0] - crop_size[0])
+    elif crop_size[0] == img.shape[0]:
+        lb_x = 0
+    else:
+        raise ValueError("crop_size[0] must be smaller or equal to the images x dimension")
+
+    if crop_size[1] < img.shape[1]:
+        lb_y = np.random.randint(0, img.shape[1] - crop_size[1])
+    elif crop_size[1] == img.shape[1]:
+        lb_y = 0
+    else:
+        raise ValueError("crop_size[1] must be smaller or equal to the images y dimension")
+
+    if crop_size[2] < img.shape[2]:
+        lb_z = np.random.randint(0, img.shape[2] - crop_size[2])
+    elif crop_size[2] == img.shape[2]:
+        lb_z = 0
+    else:
+        raise ValueError("crop_size[2] must be smaller or equal to the images z dimension")
+
+    return img[lb_x:lb_x + crop_size[0], lb_y:lb_y + crop_size[1], lb_z:lb_z + crop_size[2]], lb_x, lb_y, lb_z
+
