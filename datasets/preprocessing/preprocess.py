@@ -29,6 +29,8 @@ import pickle
 from swc_handler import parse_swc, write_swc
 from path_util import get_file_prefix
 
+from neuronet.utils.image_util import normalize_normal
+
 def soma_labelling(image, z_ratio=0.4, r=7, thresh=220, label=255):
     dz, dy, dx = image.shape
 
@@ -179,16 +181,6 @@ class GenericPreprocessor(object):
         data[np.isnan(data)] = 0
         return data
 
-    def normalize(self, data, mask=None):
-        assert data.ndim == 4, "image must in 4 dimension: c,z,y,x"
-        for c in range(data.shape[0]):
-            if mask is None:
-                data[c] = (data[c] - data[c].mean()) / (data[c].std() + 1e-8)
-            else:
-                data[c][mask] = (data[c][mask] - data[c][mask].mean()) / (data[c][mask].std() + 1e-8)
-                data[c][mask==0] = 0
-        return data
-
     def resampling(self, data, tree=None, orig_spacing=None, target_spacing=None, order=3):
         """
         Unit test code: 
@@ -291,7 +283,7 @@ class GenericPreprocessor(object):
         # resampling to target spacing
         image, tree = self.resampling(image, tree, spacing, target_spacing)
         # normalize the image
-        image = self.normalize(image, mask=None)
+        image = normalize_normal(image, mask=None)
         # write the image and tree as well
         np.savez_compressed(imgfile_out, data=image.astype(np.float32))
         #np.save(imgfile_out, image.astype(np.float32))
@@ -348,9 +340,9 @@ class GenericPreprocessor(object):
         np.random.seed(seed)
         np.random.shuffle(samples)
         splits = {}
-        splits['train_samples'] = samples[:num_train]
-        splits['val_samples'] = samples[num_train:num_train+num_val]
-        splits['test_samples'] = samples[-num_test:]
+        splits['train'] = samples[:num_train]
+        splits['val'] = samples[num_train:num_train+num_val]
+        splits['test'] = samples[-num_test:]
         # write to file
         with open(os.path.join(output_dir, 'data_splits.pkl'), 'wb') as fp:
             pickle.dump(splits, fp)
