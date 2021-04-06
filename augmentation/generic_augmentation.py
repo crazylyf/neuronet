@@ -189,9 +189,10 @@ class RandomGeometric(AbstractTransform):
                  p_elastic_deform=0.2, deformation_scale=(0, 0.25),
                  p_rotation=0.2, angle_x=(0, 2*np.pi), 
                  angle_y=(0, 2*np.pi), angle_z=(0, 2*np.pi),
-                 p_scale=0.2, scale=(0.75,1.25), axis_scale=False,
+                 p_scale=0.2, scale=(0.75,1.25), axis_scale=False, 
+                 p_axis_scale=0.2,
                  border_mode='nearest', border_cval=0,
-                 order=3, random_crop=True):
+                 order=3, random_crop=True, anisotropic_thresh=2.):
         super(RandomGeometric, self).__init__(p)
         self.patch_size = patch_size    # in (z,y,x) order
         self.patch_center_dist_from_border = patch_center_dist_from_border
@@ -204,10 +205,12 @@ class RandomGeometric(AbstractTransform):
         self.p_scale = p_scale
         self.scale = scale
         self.axis_scale = axis_scale
+        self.p_axis_scale = p_axis_scale
         self.border_mode = border_mode
         self.border_cval = border_cval
         self.order = order
         self.random_crop = random_crop
+        self.anisotropic_thresh = anisotropic_thresh
 
     def __call__(self, img, tree=None, spacing=None):
         if np.random.random() > self.p:
@@ -244,39 +247,47 @@ class RandomGeometric(AbstractTransform):
             print(f'Elastic deformation with sigmas and mag: ', sigmas, mag)
             modified_coordinates = True
 
+        # Rotation augmentation. If anisotropic axes, we only rotate along z-axis
         if self.p_rotation > 0:
             if np.random.uniform() < self.p_rotation:
-                a_x = np.random.uniform(self.angle_x[0], self.angle_x[1])
+                a_y = np.random.uniform(self.angle_y[0], self.angle_y[1])
             else:
-                a_x = 0
+                a_y = 0
             if dim == 3:
                 if np.random.uniform() < self.p_rotation:
-                    a_y = np.random.uniform(self.angle_y[0], self.angle_y[1])
+                    a_x = np.random.uniform(self.angle_x[0], self.angle_x[1])
                 else:
-                    a_y = 0
+                    a_x = 0
                 if np.random.uniform() < self.p_rotation:
                     a_z = np.random.uniform(self.angle_z[0], self.angle_z[1])
                 else:
                     a_z = 0
-                coords = rotate_coords_3d(coords, a_x, a_y, a_z)
+
+                if spacing[0] / spacing[2] > self.anisotropic_thresh:
+                    print('Anisotropic axes!')
+                    a_y = 0
+                    a_x = 0
+                coords = rotate_coords_3d(coords, a_z, a_y, a_x)
             else:
-                coords = rotate_coords_2d(coords, a_x)
-            print(f'Rotation with with {a_x}, {a_y}, {a_y}')
+                coords = rotate_coords_2d(coords, a_y)
+            print(f'Rotation with {a_z/np.pi*180.0}, {a_y/np.pi*180.}, {a_x/np.pi*180.}')
             modified_coords = True
 
         if np.random.uniform() < self.p_scale:
-            if self.axis_scale:
+            # larger scale, smaller object in image
+            if self.axis_scale and self.p_axis_scale: 
+                # axis-independent scaling
                 sc = []
                 for _ in range(dim):
                     if np.random.random() < 0.5 and self.scale[0] < 1:
                         sc.append(np.random.uniform(self.scale[0], 1))
                     else:
-                        sc.append(np.random.uniform(max(self.scale[0],1), max(self.scale[1], 1)))
+                        sc.append(np.random.uniform(max(self.scale[0],1), self.scale[1]))
             else:
                 if np.random.random() < 0.5 and self.scale[0] < 1:
                     sc = np.random.uniform(self.scale[0], 1)
                 else:
-                    sc = np.random.uniform(max(self.scale[0], 1), max(self.scale[1],1))
+                    sc = np.random.uniform(max(self.scale[0], 1), self.scale[1])
             coords = scale_coords(coords, sc)
             print(f'scaling with parameter: {sc}')
             modified_coords = True
@@ -301,7 +312,7 @@ class RandomGeometric(AbstractTransform):
             else:
                 d, s = center_crop_aug(img, patch_size, s)
             img_p = d
-        return img, tree, spacing
+        return img_p, tree, spacing
 
 
 if __name__ == '__main__':
@@ -319,20 +330,22 @@ if __name__ == '__main__':
     img = normalize_normal(img)
     print(f'Statistics of original image: {img.mean()}, {img.std()}, {img.min()}, {img.max()}')
     tree = None
-    spacing = None
-    patch_size = [200, 480, 480]
-    p_rotation = 1.0
+    spacing = [1.0, 0.2, 0.2]
+    patch_size = [256, 512, 512]    # in z,y,x order
+    p_rotation = 0.0
     angle_x = (0, 2*np.pi)
-    angle_y = (0, 0)
-    angle_z = (0, 0)
+    angle_y = (0, 2*np.pi)
+    angle_z = (0, 2*np.pi)
     p_scale = 0.0
+    axis_scale = True
     random_crop = False
-    p_elastic_deform = 0
+    p_elastic_deform = 1.0
     aug = RandomGeometric(patch_size, p=1., patch_center_dist_from_border=30,
                  p_elastic_deform=p_elastic_deform, deformation_scale=(0, 0.25),
                  p_rotation=p_rotation, angle_x=angle_x, 
                  angle_y=angle_y, angle_z=angle_z,
-                 p_scale=p_scale, scale=(0.75,1.25), axis_scale=False,
+                 p_scale=p_scale, scale=(0.75,1.25), axis_scale=axis_scale,
+                 p_axis_scale=0.5,
                  border_mode='nearest', border_cval=0,
                  order=3, random_crop=random_crop)
     t0 = time.time()
@@ -341,5 +354,6 @@ if __name__ == '__main__':
     print(f'Timed used: {time.time()-t0}s')
     # unnormalize for visual inspection
     img_unn = unnormalize_normal(img_new)
+    img_unn = img_unn.astype(np.uint8)
     print(f'Image statstics: {img_unn.mean()}, {img_unn.std()}, {img_unn.min()}, {img_unn.max()}')
     sitk.WriteImage(sitk.GetImageFromArray(img_unn[0]), f'{file_prefix}_aug.tiff')
