@@ -12,6 +12,7 @@
 
 import numpy as np
 import torch
+import torch.nn.functional as F
 
 def init_device(device_name):
     if device_name == 'cpu':
@@ -35,6 +36,19 @@ def set_deterministic(deterministic=True, seed=1024):
         torch.backends.cudnn.benchmark = True
 
     return True
+
+def logits_to_seg(logits, thresh=None):
+    with torch.no_grad():
+        if thresh is not None:
+            # no need to do expensive softmax
+            seg = logits.argmax(dim=1)
+        else:
+            probs = F.softmax(logits, dim=1)
+            vmax, seg = probs.max(dim=1)
+            mask = vmax > thresh
+            # thresh for non-zero class
+            seg[~mask] = 0
+    return seg
 
 
 # TODO: network ploting

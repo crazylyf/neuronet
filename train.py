@@ -22,6 +22,7 @@ import torch.utils.data as tudata
 from neuronet.models import unet
 from neuronet.utils import util
 from neuronet.datasets.generic_dataset import GenericDataset
+from neuronet.loss.dice_loss import BinaryDiceLoss
 
 
 parser = argparse.ArgumentParser(
@@ -46,6 +47,8 @@ parser.add_argument('--momentum', default=0.99, type=float,
                     help='Momentum value for optim')
 parser.add_argument('--weight_decay', default=3e-5, type=float,
                     help='Weight decay for SGD')
+parser.add_argument('--max_epochs', default=200, type=int,
+                    help='maximal number of epochs')
 # network specific
 parser.add_argument('--net_config', default="./models/configs/default_config.json",
                     type=str,
@@ -96,8 +99,8 @@ def train():
 
     # optimizer & loss
     optimizer = torch.optim.SGD(model.parameters(), args.lr, weight_decay=args.weight_decay, nesterov=True)
-    criterion = nn.CrossEntropyLoss()
-    criterion = criterion.to(device)
+    loss_ce = nn.CrossEntropyLoss().to(device)
+    loss_dice = BinaryDiceLoss().to(device)
 
     # training process
     net.train()
