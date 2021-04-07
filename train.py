@@ -17,32 +17,34 @@ import numpy as np
 
 import torch
 import torch.nn as nn
+import torch.utils.data as tudata
 
 from neuronet.models import unet
 from neuronet.utils import util
+from neuronet.datasets.generic_dataset import GenericDataset
 
 
 parser = argparse.ArgumentParser(
     description='Segmentator for Neuronal Image With Pytorch')
 # data specific
-parser.add_argument('--train_set', 
-                    type=str, help='training set path')
-parser.add_argument('--val_set', 
-                    type=str, help='val set path')
+parser.add_argument('--data_file', 
+                    type=str, help='data file')
 # training specific
 parser.add_argument('--batch_size', default=2, type=int,
                     help='Batch size for training')
 parser.add_argument('--num_workers', default=4, type=int,
                     help='Number of workers used in dataloading')
+parser.add_argument('--image_shape', default='256,512,512', type=str,
+                    help='Input image shape')
 parser.add_argument('--cuda', action="store_true", 
                     help='Whether use gpu to train model, default True')
 parser.add_argument('--amp', action="store_true", 
                     help='Whether to use AMP training, default True')
-parser.add_argument('--lr', '--learning-rate', default=1e-2, type=float,
+parser.add_argument('--lr', '--learning-rate', default=3e-4, type=float,
                     help='initial learning rate')
-parser.add_argument('--momentum', default=0.9, type=float,
+parser.add_argument('--momentum', default=0.99, type=float,
                     help='Momentum value for optim')
-parser.add_argument('--weight_decay', default=5e-4, type=float,
+parser.add_argument('--weight_decay', default=3e-5, type=float,
                     help='Weight decay for SGD')
 # network specific
 parser.add_argument('--net_config', default="./models/configs/default_config.json",
@@ -53,6 +55,12 @@ parser.add_argument('--save_folder', default='weights/',
                     help='Directory for saving checkpoint models')
 args = parser.parse_args()
 
+
+def poly_lr(epoch, max_epochs, initial_lr, exponent=0.9):
+    """
+    poly_lr policy as the same as nnUNet
+    """
+    return initial_lr * (1 - epch / max_epochs)**exponent
 
 def train():
     # initialize device
@@ -66,10 +74,15 @@ def train():
         os.mkdir(args.save_folder)
 
     # dataset preparing
-    train_set = ''
-    val_set = ''
-    train_loader = ''
-    val_loader = ''
+    imgshape = tuple(map(int, args.image_shape.split(',')))
+    train_set = GenericDataset(args.data_file, phase='train', imgshape)
+    val_set = GenericDataset(args.data_file, phase='val', imgshape)
+    train_loader = tudata.DataLoader(train_set, args.batch_size, 
+                                    num_workers=args.num_workers, 
+                                    shuffle=True, pin_memory=True)
+    val_loader = tudata.DataLoader(val_set, args.batch_size, 
+                                    num_workers=args.num_workers, 
+                                    shuffle=False, pin_memory=True)
 
     # network initialization
     with open(args.net_config) as fp:
@@ -82,8 +95,8 @@ def train():
     model = model.to(device)
 
     # optimizer & loss
-    optimizer = optim
-    criterion = ''
+    optimizer = torch.optim.SGD(model.parameters(), args.lr, weight_decay=args.weight_decay, nesterov=True)
+    criterion = nn.CrossEntropyLoss()
     criterion = criterion.to(device)
 
     # training process
