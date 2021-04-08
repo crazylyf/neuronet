@@ -140,7 +140,7 @@ def load_spacing(spacing_file, zyx_order=True):
     
     return spacing_dict
 
-def swc_to_image(tree, r_exp=3, z_ratio=0.4, imgshape=(256,512,512)):
+def swc_to_image(tree, r_exp=3, z_ratio=0.4, imgshape=(256,512,512), flipy=True):
     # Note imgshape in (z,y,x) order
     # initialize empty image
     img = np.zeros(shape=imgshape, dtype=np.uint8)
@@ -185,6 +185,8 @@ def swc_to_image(tree, r_exp=3, z_ratio=0.4, imgshape=(256,512,512)):
     img = morphology.dilation(img, selem)
     # soma-labelling
     lab_img = soma_labelling(img, r=r_exp*2+1, thresh=220, label=1)
+    if flipy:
+        lab_img = lab_img[:,::-1]   # flip in y-axis, as the image is flipped
 
     return lab_img
     

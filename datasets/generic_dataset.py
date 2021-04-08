@@ -29,10 +29,11 @@ class GenericDataset(tudata.Dataset):
         # augmentations
         if phase == 'train':
             self.augment = InstanceAugmentation()
+            #self.augment = lambda *x: x
         elif phase == 'val':
-            self.augment = lambda x: x
+            self.augment = lambda *x: x
         elif phase == 'test':
-            self.augment = lambda x: x
+            self.augment = lambda *x: x
         else:
             raise NotImplementedError('phase should be train/val/test')
     
@@ -43,8 +44,8 @@ class GenericDataset(tudata.Dataset):
         return data_dict[phase]
 
     def __getitem__(self, index):
-        img, gt = self.pull_item(index)
-        return img, gt
+        img, gt, imgfile, swcfile = self.pull_item(index)
+        return img, gt, imgfile, swcfile
 
     def __len__(self):
         return len(self.data_list)
@@ -63,7 +64,7 @@ class GenericDataset(tudata.Dataset):
         tree = trim_swc(tree, self.imgshape, True)
         lab = swc_to_image(tree)
         
-        return torch.from_numpy(img.astype(np.float32)), torch.from_numpy(lab.astype(np.uint8))
+        return torch.from_numpy(img.astype(np.float32)), torch.from_numpy(lab.astype(np.uint8)), imgfile, swcfile
 
 
 if __name__ == '__main__':

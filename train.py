@@ -111,7 +111,7 @@ def train():
     # optimizer & loss
     optimizer = torch.optim.SGD(model.parameters(), args.lr, weight_decay=args.weight_decay, momentum=args.momentum, nesterov=True)
     crit_ce = nn.CrossEntropyLoss().to(device)
-    crit_dice = BinaryDiceLoss().to(device)
+    crit_dice = BinaryDiceLoss(smooth=1e-5).to(device)
 
     # training process
     model.train()
@@ -122,23 +122,23 @@ def train():
         avg_loss_dice = 0
         for it in range(args.step_per_epoch):
             try:
-                img, lab = next(train_iter)
+                img, lab, imgfiles, swcfiles = next(train_iter)
             except StopIteration:
                 train_iter = iter(train_loader)
-                img, lab = next(train_iter)
+                img, lab, imgfiles, swcfiles = next(train_iter)
             
-            debug = True
+            debug = False
             if debug:
                 img_v = (unnormalize_normal(img[0].numpy())[0]).astype(np.uint8)
                 lab_v = lab[0].numpy()
                 sitk.WriteImage(sitk.GetImageFromArray(img_v), 'img_v.tiff')
                 sitk.WriteImage(sitk.GetImageFromArray(lab_v), 'lab_v.tiff')
+                print(imgfiles[0])
                 sys.exit()
 
             img = img.to(device)
             lab = lab.to(device)
                 
-
             logits = model(img)
             print(f'Temp: {logits[:,0].min().item(), logits[:,0].max().item(), logits[:,1].min().item(), logits[:,1].max().item()}')
             # loss eval
@@ -154,7 +154,7 @@ def train():
             avg_loss_ce += loss_ce.item()
             avg_loss_dice += loss_dice.item()
 
-            if it % 1 == 0:
+            if it % 2 == 0:
                 print(f'[{epoch}/{it}] loss_ce={loss_ce}, loss_dice={loss_dice}, time: {time.time() - t0:.4f}s')
 
         avg_loss_ce /= args.step_per_epoch
