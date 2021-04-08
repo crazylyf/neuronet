@@ -22,6 +22,7 @@ import torch
 import torch.nn as nn
 import torch.utils.data as tudata
 from torch.cuda.amp import autocast, GradScaler
+import torch.nn.functional as F
 
 from neuronet.models import unet
 from neuronet.utils import util
@@ -138,25 +139,17 @@ def train():
             img = img[:,:,96:160,192:320,192:320]
             lab = lab[:,96:160,192:320,192:320]
             
-            debug = False
-            if debug:
-                img_v = (unnormalize_normal(img[0].numpy())[0]).astype(np.uint8)
-                lab_v = lab[0].numpy()
-                sitk.WriteImage(sitk.GetImageFromArray(img_v), 'img_v.tiff')
-                sitk.WriteImage(sitk.GetImageFromArray(lab_v), 'lab_v.tiff')
-                print(imgfiles[0])
-                sys.exit()
 
-            img = img.to(device)
-            lab = lab.to(device)
+            img_d = img.to(device)
+            lab_d = lab.to(device)
             
             optimizer.zero_grad()
             if args.amp:
                 with autocast():
-                    logits = model(img)
-                    del img
-                    loss_ce = crit_ce(logits, lab.long())
-                    loss_dice = crit_dice(logits, lab)
+                    logits = model(img_d)
+                    #del img
+                    loss_ce = crit_ce(logits, lab_d.long())
+                    loss_dice = crit_dice(logits, lab_d)
                     loss = loss_ce + loss_dice
                 grad_scaler.scale(loss).backward()
                 grad_scaler.unscale_(optimizer)
@@ -164,10 +157,10 @@ def train():
                 grad_scaler.step(optimizer)
                 grad_scaler.update()
             else:
-                logits = model(img)
-                del img
-                loss_ce = crit_ce(logits, lab.long())
-                loss_dice = crit_dice(logits, lab)
+                logits = model(img_d)
+                #del img
+                loss_ce = crit_ce(logits, lab_d.long())
+                loss_dice = crit_dice(logits, lab_d)
                 loss = loss_ce + loss_dice
                 loss.backward()
                 torch.nn.utils.clip_grad_norm(model.parameters(), 12)
@@ -185,6 +178,15 @@ def train():
 
         avg_loss_ce /= args.step_per_epoch
         avg_loss_dice /= args.step_per_epoch
+
+        debug = True
+        if debug:
+            img_v = (unnormalize_normal(img[0].numpy())[0]).astype(np.uint8)
+            lab_v = (unnormalize_normal(lab[[0]].numpy())[0]).astype(np.uint8)
+            logits = F.softmax(logits, dim=1).to(torch.device('cpu'))
+            log_v = (unnormalize_normal(logits[0,[1]].numpy())[0]).astype(np.float32)
+            result = np.concatenate((img_v, lab_v, log_v), axis=-1)
+            sitk.WriteImage(sitk.GetImageFromArray(result), f'pred_epoch{epoch}.tiff')
 
         # learning rate decay
         cur_lr = poly_lr(epoch, args.max_epochs, args.lr, 0.9)
