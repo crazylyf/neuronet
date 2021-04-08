@@ -56,6 +56,8 @@ parser.add_argument('--max_epochs', default=200, type=int,
                     help='maximal number of epochs')
 parser.add_argument('--step_per_epoch', default=200, type=int,
                     help='step per epoch')
+parser.add_argument('--deterministic', action='store_true',
+                    help='run in deterministic mode')
 # network specific
 parser.add_argument('--net_config', default="./models/configs/default_config.json",
                     type=str,
@@ -78,6 +80,9 @@ def train():
         device = util.init_device('cpu')
     else:
         device = util.init_device('cuda')
+
+    if args.deterministic:
+        util.set_deterministic(deterministic=True, seed=1024)
 
     # for output folder
     if not os.path.exists(args.save_folder):
@@ -128,6 +133,10 @@ def train():
             except StopIteration:
                 train_iter = iter(train_loader)
                 img, lab, imgfiles, swcfiles = next(train_iter)
+
+            # center croping for debug, 64x128x128 patch
+            img = img[:,:,96:160,192:320,192:320]
+            lab = lab[:,96:160,192:320,192:320]
             
             debug = False
             if debug:
