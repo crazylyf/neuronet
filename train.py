@@ -147,7 +147,7 @@ def train():
             if args.amp:
                 with autocast():
                     logits = model(img_d)
-                    #del img
+                    del img_d
                     loss_ce = crit_ce(logits, lab_d.long())
                     loss_dice = crit_dice(logits, lab_d)
                     loss = loss_ce + loss_dice
@@ -158,7 +158,7 @@ def train():
                 grad_scaler.update()
             else:
                 logits = model(img_d)
-                #del img
+                del img_d
                 loss_ce = crit_ce(logits, lab_d.long())
                 loss_dice = crit_dice(logits, lab_d)
                 loss = loss_ce + loss_dice
@@ -181,12 +181,15 @@ def train():
 
         debug = True
         if debug:
-            img_v = (unnormalize_normal(img[0].numpy())[0]).astype(np.uint8)
-            lab_v = (unnormalize_normal(lab[[0]].numpy())[0]).astype(np.uint8)
-            logits = F.softmax(logits, dim=1).to(torch.device('cpu'))
-            log_v = (unnormalize_normal(logits[0,[1]].numpy())[0]).astype(np.float32)
-            result = np.concatenate((img_v, lab_v, log_v), axis=-1)
-            sitk.WriteImage(sitk.GetImageFromArray(result), f'pred_epoch{epoch}.tiff')
+            with torch.no_grad():
+                img_v = (unnormalize_normal(img[0].numpy())[0]).astype(np.uint8)
+                lab_v = (unnormalize_normal(lab[[0]].numpy().astype(np.float))[0]).astype(np.uint8)
+                
+                logits = F.softmax(logits, dim=1).to(torch.device('cpu'))
+                log_v = (unnormalize_normal(logits[0,[1]].numpy())[0]).astype(np.float32)
+                sitk.WriteImage(sitk.GetImageFromArray(img_v), f'debug_epoch{epoch}_img.tiff')
+                sitk.WriteImage(sitk.GetImageFromArray(lab_v), f'debug_epoch{epoch}_lab.tiff')
+                sitk.WriteImage(sitk.GetImageFromArray(log_v), f'debug_epoch{epoch}_pred.tiff')
 
         # learning rate decay
         cur_lr = poly_lr(epoch, args.max_epochs, args.lr, 0.9)
