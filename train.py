@@ -21,6 +21,7 @@ import SimpleITK as sitk
 import torch
 import torch.nn as nn
 import torch.utils.data as tudata
+from torch.cuda.amp import autocast, GradScaler
 
 from neuronet.models import unet
 from neuronet.utils import util
@@ -117,6 +118,7 @@ def train():
     model.train()
     
     t0 = time.time()
+    grad_scaler = GradScaler()
     for epoch in range(args.max_epochs):
         avg_loss_ce = 0
         avg_loss_dice = 0
@@ -138,18 +140,33 @@ def train():
 
             img = img.to(device)
             lab = lab.to(device)
-                
-            logits = model(img)
-            print(f'Temp: {logits[:,0].min().item(), logits[:,0].max().item(), logits[:,1].min().item(), logits[:,1].max().item()}')
-            # loss eval
+            
             optimizer.zero_grad()
+            if args.amp:
+                with autocast():
+                    logits = model(img)
+                    del img
+                    loss_ce = crit_ce(logits, lab.long())
+                    loss_dice = crit_dice(logits, lab)
+                    loss = loss_ce + loss_dice
+                grad_scaler.scale(loss).backward()
+                grad_scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm(model.parameters(), 12)
+                grad_scaler.step(optimizer)
+                grad_scaler.update()
+            else:
+                logits = model(img)
+                del img
+                loss_ce = crit_ce(logits, lab.long())
+                loss_dice = crit_dice(logits, lab)
+                loss = loss_ce + loss_dice
+                loss.backward()
+                torch.nn.utils.clip_grad_norm(model.parameters(), 12)
+                optimizer.step()
+
+            print(f'Temp: {logits[:,0].min().item(), logits[:,0].max().item(), logits[:,1].min().item(), logits[:,1].max().item()}')
             #print(logits.shape, lab.shape, lab.max(), lab.min())
-            loss_ce = crit_ce(logits, lab.long())
-            loss_dice = crit_dice(logits, lab)
-            loss = loss_ce + loss_dice
-            # backprop
-            loss.backward()
-            optimizer.step()
+            
             
             avg_loss_ce += loss_ce.item()
             avg_loss_dice += loss_dice.item()
