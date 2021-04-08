@@ -14,6 +14,9 @@ import os
 import sys
 import argparse
 import numpy as np
+import time
+import json
+import SimpleITK as sitk
 
 import torch
 import torch.nn as nn
@@ -21,6 +24,7 @@ import torch.utils.data as tudata
 
 from neuronet.models import unet
 from neuronet.utils import util
+from neuronet.utils.image_util import unnormalize_normal
 from neuronet.datasets.generic_dataset import GenericDataset
 from neuronet.loss.dice_loss import BinaryDiceLoss
 
@@ -28,8 +32,8 @@ from neuronet.loss.dice_loss import BinaryDiceLoss
 parser = argparse.ArgumentParser(
     description='Segmentator for Neuronal Image With Pytorch')
 # data specific
-parser.add_argument('--data_file', 
-                    type=str, help='data file')
+parser.add_argument('--data_file', default='./data/task0001_17302/data_splits.pkl',
+                    type=str, help='dataset split file')
 # training specific
 parser.add_argument('--batch_size', default=2, type=int,
                     help='Batch size for training')
@@ -37,11 +41,11 @@ parser.add_argument('--num_workers', default=4, type=int,
                     help='Number of workers used in dataloading')
 parser.add_argument('--image_shape', default='256,512,512', type=str,
                     help='Input image shape')
-parser.add_argument('--cuda', action="store_true", 
+parser.add_argument('--cpu', action="store_true", 
                     help='Whether use gpu to train model, default True')
 parser.add_argument('--amp', action="store_true", 
                     help='Whether to use AMP training, default True')
-parser.add_argument('--lr', '--learning-rate', default=3e-4, type=float,
+parser.add_argument('--lr', '--learning-rate', default=1e-2, type=float,
                     help='initial learning rate')
 parser.add_argument('--momentum', default=0.99, type=float,
                     help='Momentum value for optim')
@@ -49,6 +53,8 @@ parser.add_argument('--weight_decay', default=3e-5, type=float,
                     help='Weight decay for SGD')
 parser.add_argument('--max_epochs', default=200, type=int,
                     help='maximal number of epochs')
+parser.add_argument('--step_per_epoch', default=200, type=int,
+                    help='step per epoch')
 # network specific
 parser.add_argument('--net_config', default="./models/configs/default_config.json",
                     type=str,
@@ -63,14 +69,14 @@ def poly_lr(epoch, max_epochs, initial_lr, exponent=0.9):
     """
     poly_lr policy as the same as nnUNet
     """
-    return initial_lr * (1 - epch / max_epochs)**exponent
+    return initial_lr * (1 - epoch / max_epochs)**exponent
 
 def train():
     # initialize device
-    if args.cuda:
-        device = util.init_device('cuda')
-    else:
+    if args.cpu:
         device = util.init_device('cpu')
+    else:
+        device = util.init_device('cuda')
 
     # for output folder
     if not os.path.exists(args.save_folder):
@@ -78,14 +84,18 @@ def train():
 
     # dataset preparing
     imgshape = tuple(map(int, args.image_shape.split(',')))
-    train_set = GenericDataset(args.data_file, phase='train', imgshape)
-    val_set = GenericDataset(args.data_file, phase='val', imgshape)
+    train_set = GenericDataset(args.data_file, phase='train', imgshape=imgshape)
+    val_set = GenericDataset(args.data_file, phase='val', imgshape=imgshape)
+    print(f'Number of train and val samples: {len(train_set)}, {len(val_set)}')
     train_loader = tudata.DataLoader(train_set, args.batch_size, 
                                     num_workers=args.num_workers, 
-                                    shuffle=True, pin_memory=True)
+                                    shuffle=True, pin_memory=True, 
+                                    drop_last=True)
     val_loader = tudata.DataLoader(val_set, args.batch_size, 
                                     num_workers=args.num_workers, 
                                     shuffle=False, pin_memory=True)
+    train_iter = iter(train_loader)
+    val_iter = iter(val_loader)
 
     # network initialization
     with open(args.net_config) as fp:
@@ -95,18 +105,66 @@ def train():
         print(model)
         print('='*30 + '\n')
 
+    #import ipdb; ipdb.set_trace()
     model = model.to(device)
 
     # optimizer & loss
-    optimizer = torch.optim.SGD(model.parameters(), args.lr, weight_decay=args.weight_decay, nesterov=True)
-    loss_ce = nn.CrossEntropyLoss().to(device)
-    loss_dice = BinaryDiceLoss().to(device)
+    optimizer = torch.optim.SGD(model.parameters(), args.lr, weight_decay=args.weight_decay, momentum=args.momentum, nesterov=True)
+    crit_ce = nn.CrossEntropyLoss().to(device)
+    crit_dice = BinaryDiceLoss().to(device)
 
     # training process
-    net.train()
+    model.train()
     
-    for 
+    t0 = time.time()
+    for epoch in range(args.max_epochs):
+        avg_loss_ce = 0
+        avg_loss_dice = 0
+        for it in range(args.step_per_epoch):
+            try:
+                img, lab = next(train_iter)
+            except StopIteration:
+                train_iter = iter(train_loader)
+                img, lab = next(train_iter)
+            
+            debug = True
+            if debug:
+                img_v = (unnormalize_normal(img[0].numpy())[0]).astype(np.uint8)
+                lab_v = lab[0].numpy()
+                sitk.WriteImage(sitk.GetImageFromArray(img_v), 'img_v.tiff')
+                sitk.WriteImage(sitk.GetImageFromArray(lab_v), 'lab_v.tiff')
+                sys.exit()
 
+            img = img.to(device)
+            lab = lab.to(device)
+                
+
+            logits = model(img)
+            print(f'Temp: {logits[:,0].min().item(), logits[:,0].max().item(), logits[:,1].min().item(), logits[:,1].max().item()}')
+            # loss eval
+            optimizer.zero_grad()
+            #print(logits.shape, lab.shape, lab.max(), lab.min())
+            loss_ce = crit_ce(logits, lab.long())
+            loss_dice = crit_dice(logits, lab)
+            loss = loss_ce + loss_dice
+            # backprop
+            loss.backward()
+            optimizer.step()
+            
+            avg_loss_ce += loss_ce.item()
+            avg_loss_dice += loss_dice.item()
+
+            if it % 1 == 0:
+                print(f'[{epoch}/{it}] loss_ce={loss_ce}, loss_dice={loss_dice}, time: {time.time() - t0:.4f}s')
+
+        avg_loss_ce /= args.step_per_epoch
+        avg_loss_dice /= args.step_per_epoch
+
+        # learning rate decay
+        cur_lr = poly_lr(epoch, args.max_epochs, args.lr, 0.9)
+        print(f'Setting lr to {cur_lr}')
+        for g in optimizer.param_groups:
+            g['lr'] = cur_lr
 
 if __name__ == '__main__':
     train()

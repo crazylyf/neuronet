@@ -55,7 +55,7 @@ class RandomSaturation(AbstractTransform):
     def __call__(self, img, tree=None, spacing=None):
         if np.random.random() < self.p:
             sf = np.random.uniform(self.lower, self.upper)
-            print(f'RandomSaturation with factor: {sf}')
+            #print(f'RandomSaturation with factor: {sf}')
             img *= sf
 
         return img, tree, spacing
@@ -71,7 +71,7 @@ class RandomBrightness(AbstractTransform):
             img_flat = img.reshape((img.shape[0],-1))
             mm = img_flat.max(axis=1) - img_flat.min(axis=1)
             dmm = np.random.uniform(-self.dratio, self.dratio) * mm
-            print(f'RandomBrightness with shift: {dmm}')
+            #print(f'RandomBrightness with shift: {dmm}')
             img += dmm.reshape((mm.shape[0],1,1,1))
 
         return img, tree, spacing
@@ -87,7 +87,7 @@ class RandomGaussianNoise(AbstractTransform):
             img_flat = img.reshape((img.shape[0],-1))
             mm = img_flat.max(axis=1) - img_flat.min(axis=1)
             noise = np.random.normal(0, var, size=img.shape) * mm.reshape((-1,1,1,1))
-            print(f'RandomGaussianNoise with var: {var}')
+            #print(f'RandomGaussianNoise with var: {var}')
             img += noise
         return img, tree, spacing
 
@@ -106,7 +106,7 @@ class RandomGaussianBlur(AbstractTransform):
             kernel_z = max(int(round(kernel_z)) * 2 + 1, 1)
             kernel_xy = kernel * 2 + 1
             sigmas = (kernel_z, kernel_xy, kernel_xy)
-            print(f'RandomGaussianBlur with sigmas: {sigmas}')
+            #print(f'RandomGaussianBlur with sigmas: {sigmas}')
 
             for c in range(img.shape[0]):
                 img[c] = gaussian_filter(img[c], sigma=sigmas)
@@ -133,7 +133,7 @@ class RandomResample(AbstractTransform):
                 zoom = np.random.uniform(*self.zoom_range)
             target_shape = np.round(shape * zoom).astype(np.int)
 
-            print(f'RandomSample with zoom factor: {zoom}')
+            #print(f'RandomSample with zoom factor: {zoom}')
             for c in range(img.shape[0]):
                 downsampled = resize(img[c], target_shape, order=self.order_down, mode='edge', anti_aliasing=False)
                 img[c] = resize(downsampled, shape, order=self.order_up, mode='edge', anti_aliasing=False)
@@ -181,7 +181,7 @@ class RandomMirror(AbstractTransform):
                         x = shape_axis - x
                         new_tree.append((idx,type_,x,y,z,r,p))
                 tree = new_tree
-            print(f'Mirroring for axis: {axis}')
+            #print(f'Mirroring for axis: {axis}')
         return img, tree, spacing
                 
 
@@ -299,7 +299,7 @@ class RandomGeometric(AbstractTransform):
                 mag.append(mag_real)
 
             coordinates = elastic_deform_coordinates_2(coords, sigmas, mag)
-            print(f'Elastic deformation with sigmas and mag: ', sigmas, mag)
+            #print(f'Elastic deformation with sigmas and mag: ', sigmas, mag)
             modified_coordinates = True
 
         # Rotation augmentation. If anisotropic axes, we only rotate along z-axis
@@ -319,13 +319,13 @@ class RandomGeometric(AbstractTransform):
                     a_z = 0
 
                 if spacing[0] / spacing[2] > self.anisotropic_thresh:
-                    print('Anisotropic axes!')
+                    #print('Anisotropic axes!')
                     a_y = 0
                     a_x = 0
                 coords = rotate_coords_3d(coords, a_z, a_y, a_x)
             else:
                 coords = rotate_coords_2d(coords, a_y)
-            print(f'Rotation with {a_z/np.pi*180.0}, {a_y/np.pi*180.}, {a_x/np.pi*180.}')
+            #print(f'Rotation with {a_z/np.pi*180.0}, {a_y/np.pi*180.}, {a_x/np.pi*180.}')
             modified_coords = True
 
         if np.random.uniform() < self.p_scale:
@@ -344,7 +344,7 @@ class RandomGeometric(AbstractTransform):
                 else:
                     sc = np.random.uniform(max(self.scale[0], 1), self.scale[1])
             coords = scale_coords(coords, sc)
-            print(f'scaling with parameter: {sc}')
+            #print(f'scaling with parameter: {sc}')
             modified_coords = True
 
         if modified_coords:

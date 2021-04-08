@@ -108,7 +108,7 @@ def trim_swc(tree_orig, imgshape, keep_candidate_points=True):
     # do DFS searching
     #print(soma_idx)
     traverse_leaves(soma_idx, child_dict, good_points, cand_points, pos_dict)
-    print("#good/#cand/#total:", len(good_points), len(cand_points), len(pos_dict))  
+    #print("#good/#cand/#total:", len(good_points), len(cand_points), len(pos_dict))  
     
     # return the tree, (NOTE: without order)
     tree_trim = []

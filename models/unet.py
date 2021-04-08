@@ -144,7 +144,7 @@ class UNet(BaseModel):
             elif u == num_pool - 1:
                 # the last layer
                 input_channels_u = output_channels_c
-                output_channels_u = base_num_features // 2
+                output_channels_u = max(base_num_features // 2, 2)
                 input_channels_c = output_channels_u
                 output_channels_c = output_channels_u
             else:
@@ -202,14 +202,15 @@ class UNet(BaseModel):
 
         x = self.conv_blocks_context[-1](x)
 
+        lateral_supervision = self._deep_supervision and self.do_ds
         for u in range(len(self.tu)):
             x = self.tu[u](x)
             if u != len(self.tu) - 1:
                 x = torch.cat((x, skips[-(u + 1)]), dim=1)
             x = self.conv_blocks_localization[u](x)
-            seg_outputs.append(self.final_nonlin(self.seg_outputs[u](x)))
-
-        if self._deep_supervision and self.do_ds:
+            if lateral_supervision or u == len(self.tu) - 1:
+                seg_outputs.append(self.final_nonlin(self.seg_outputs[u](x)))
+        if lateral_supervision:
             return tuple([seg_outputs[-1]] + [i(j) for i, j in
                                               zip(list(self.upscale_logits_ops)[::-1], seg_outputs[:-1][::-1])])
         else:
@@ -229,5 +230,5 @@ if __name__ == '__main__':
     )
     print(network)
 
-    summary(network, input_size=(2,1,512,512,256))  
+    summary(network, input_size=(2,1,256,512,512))  
 

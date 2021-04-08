@@ -22,6 +22,7 @@ def init_device(device_name):
             device = torch.device(device_name)
     else:
         raise ValueEror("Invalid argument for device_name")
+    return device
 
 def set_deterministic(deterministic=True, seed=1024):
     if deterministic:
