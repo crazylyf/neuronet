@@ -186,7 +186,7 @@ def train():
                 lab_v = (unnormalize_normal(lab[[0]].numpy().astype(np.float))[0]).astype(np.uint8)
                 
                 logits = F.softmax(logits, dim=1).to(torch.device('cpu'))
-                log_v = (unnormalize_normal(logits[0,[1]].numpy())[0]).astype(np.float32)
+                log_v = (unnormalize_normal(logits[0,[1]].numpy())[0]).astype(np.uint8)
                 sitk.WriteImage(sitk.GetImageFromArray(img_v), f'debug_epoch{epoch}_img.tiff')
                 sitk.WriteImage(sitk.GetImageFromArray(lab_v), f'debug_epoch{epoch}_lab.tiff')
                 sitk.WriteImage(sitk.GetImageFromArray(log_v), f'debug_epoch{epoch}_pred.tiff')
