@@ -81,8 +81,8 @@ def poly_lr(epoch, max_epochs, initial_lr, exponent=0.9):
 
 # test only function
 def crop_data(img, lab):
-    img = img[:,:,96:160,192:320,192:320]
-    lab = lab[:,96:160,192:320,192:320]
+    #img = img[:,:,96:160,192:320,192:320]
+    #lab = lab[:,96:160,192:320,192:320]
     return img, lab
 
 def validate(model, val_loader, device, crit_ce, crit_dice, epoch, debug=True, debug_idx=0):
@@ -165,7 +165,8 @@ def train():
     model = model.to(device)
 
     # optimizer & loss
-    optimizer = torch.optim.SGD(model.parameters(), args.lr, weight_decay=args.weight_decay, momentum=args.momentum, nesterov=True)
+    #optimizer = torch.optim.SGD(model.parameters(), args.lr, weight_decay=args.weight_decay, momentum=args.momentum, nesterov=True)
+    optimizer = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay, amsgrad=True)
     crit_ce = nn.CrossEntropyLoss().to(device)
     crit_dice = BinaryDiceLoss(smooth=1e-5).to(device)
 
