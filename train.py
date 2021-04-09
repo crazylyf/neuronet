@@ -30,6 +30,8 @@ from neuronet.utils.image_util import unnormalize_normal
 from neuronet.datasets.generic_dataset import GenericDataset
 from neuronet.loss.dice_loss import BinaryDiceLoss
 
+import path_util
+
 
 parser = argparse.ArgumentParser(
     description='Segmentator for Neuronal Image With Pytorch')
@@ -59,12 +61,14 @@ parser.add_argument('--step_per_epoch', default=200, type=int,
                     help='step per epoch')
 parser.add_argument('--deterministic', action='store_true',
                     help='run in deterministic mode')
+parser.add_argument('--test_frequency', default=1, type=int,
+                    help='frequency of testing')
 # network specific
 parser.add_argument('--net_config', default="./models/configs/default_config.json",
                     type=str,
                     help='json file defining the network configurations')
 
-parser.add_argument('--save_folder', default='weights/',
+parser.add_argument('--save_folder', default='exps/temp',
                     help='Directory for saving checkpoint models')
 args = parser.parse_args()
 
@@ -74,6 +78,51 @@ def poly_lr(epoch, max_epochs, initial_lr, exponent=0.9):
     poly_lr policy as the same as nnUNet
     """
     return initial_lr * (1 - epoch / max_epochs)**exponent
+
+# test only function
+def crop_data(img, lab):
+    img = img[:,:,96:160,192:320,192:320]
+    lab = lab[:,96:160,192:320,192:320]
+    return img, lab
+
+def validate(model, val_loader, device, crit_ce, crit_dice, epoch, debug=True, debug_idx=0):
+    model.eval()
+    avg_ce_loss = 0
+    avg_dice_loss = 0
+    for img,lab,imgfiles,swcfiles in val_loader:
+        img, lab = crop_data(img, lab)
+        img_d = img.to(device)
+        lab_d = lab.to(device)
+        
+        with torch.no_grad():
+            logits = model(img_d)
+            del img_d
+            loss_ce = crit_ce(logits, lab_d.long())
+            loss_dice = crit_dice(logits, lab_d)
+            loss = loss_ce + loss_dice
+
+        avg_ce_loss += loss_ce
+        avg_dice_loss += loss_dice
+
+    avg_ce_loss /= len(val_loader)
+    avg_dice_loss /= len(val_loader)
+    
+    if debug:
+        imgfile = imgfiles[debug_idx]
+        prefix = path_util.get_file_prefix(imgfile)
+        with torch.no_grad():
+            img_v = (unnormalize_normal(img[0].numpy())[0]).astype(np.uint8)
+            lab_v = (unnormalize_normal(lab[[0]].numpy().astype(np.float))[0]).astype(np.uint8)
+            
+            logits = F.softmax(logits, dim=1).to(torch.device('cpu'))
+            log_v = (unnormalize_normal(logits[0,[1]].numpy())[0]).astype(np.uint8)
+            sitk.WriteImage(sitk.GetImageFromArray(img_v), os.path.join(args.save_folder, f'debug_epoch{epoch}_{prefix}_img.tiff'))
+            sitk.WriteImage(sitk.GetImageFromArray(lab_v), os.path.join(f'debug_epoch{epoch}_{prefix}_lab.tiff'))
+            sitk.WriteImage(sitk.GetImageFromArray(log_v), os.path.join(f'debug_epoch{epoch}_{prefix}_pred.tiff'))
+
+    model.train()
+
+    return avg_ce_loss, avg_dice_loss
 
 def train():
     # initialize device
@@ -136,8 +185,7 @@ def train():
                 img, lab, imgfiles, swcfiles = next(train_iter)
 
             # center croping for debug, 64x128x128 patch
-            img = img[:,:,96:160,192:320,192:320]
-            lab = lab[:,96:160,192:320,192:320]
+            img, lab = crop_data(img, lab)
             
 
             img_d = img.to(device)
@@ -174,22 +222,18 @@ def train():
             avg_loss_dice += loss_dice.item()
 
             if it % 2 == 0:
-                print(f'[{epoch}/{it}] loss_ce={loss_ce}, loss_dice={loss_dice}, time: {time.time() - t0:.4f}s')
+                print(f'[{epoch}/{it}] loss_ce={loss_ce:.5f}, loss_dice={loss_dice:.5f}, time: {time.time() - t0:.4f}s')
 
         avg_loss_ce /= args.step_per_epoch
         avg_loss_dice /= args.step_per_epoch
 
-        debug = True
-        if debug:
-            with torch.no_grad():
-                img_v = (unnormalize_normal(img[0].numpy())[0]).astype(np.uint8)
-                lab_v = (unnormalize_normal(lab[[0]].numpy().astype(np.float))[0]).astype(np.uint8)
-                
-                logits = F.softmax(logits, dim=1).to(torch.device('cpu'))
-                log_v = (unnormalize_normal(logits[0,[1]].numpy())[0]).astype(np.uint8)
-                sitk.WriteImage(sitk.GetImageFromArray(img_v), f'debug_epoch{epoch}_img.tiff')
-                sitk.WriteImage(sitk.GetImageFromArray(lab_v), f'debug_epoch{epoch}_lab.tiff')
-                sitk.WriteImage(sitk.GetImageFromArray(log_v), f'debug_epoch{epoch}_pred.tiff')
+        # do validation
+        if epoch % args.test_frequency == 0:
+            print('Test on val set')
+            val_loss_ce, val_loss_dice = validate(model, val_loader, device, crit_ce, crit_dice, epoch, debug=True, debug_idx=0)
+            print(f'[Val{epoch}] average ce loss and dice loss are {val_loss_ce:.5f}, {val_loss_dice:.5f}')   
+
+        
 
         # learning rate decay
         cur_lr = poly_lr(epoch, args.max_epochs, args.lr, 0.9)
