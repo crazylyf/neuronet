@@ -117,8 +117,8 @@ def validate(model, val_loader, device, crit_ce, crit_dice, epoch, debug=True, d
             logits = F.softmax(logits, dim=1).to(torch.device('cpu'))
             log_v = (unnormalize_normal(logits[0,[1]].numpy())[0]).astype(np.uint8)
             sitk.WriteImage(sitk.GetImageFromArray(img_v), os.path.join(args.save_folder, f'debug_epoch{epoch}_{prefix}_img.tiff'))
-            sitk.WriteImage(sitk.GetImageFromArray(lab_v), os.path.join(f'debug_epoch{epoch}_{prefix}_lab.tiff'))
-            sitk.WriteImage(sitk.GetImageFromArray(log_v), os.path.join(f'debug_epoch{epoch}_{prefix}_pred.tiff'))
+            sitk.WriteImage(sitk.GetImageFromArray(lab_v), os.path.join(args.save_folder, f'debug_epoch{epoch}_{prefix}_lab.tiff'))
+            sitk.WriteImage(sitk.GetImageFromArray(log_v), os.path.join(args.save_folder, f'debug_epoch{epoch}_{prefix}_pred.tiff'))
 
     model.train()
 
