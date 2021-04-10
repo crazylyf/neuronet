@@ -29,7 +29,7 @@ class UNet(BaseModel):
                  final_nonlin=lambda x: x, weightInitializer=InitWeights_He(1e-2), pool_op_kernel_sizes=None,
                  conv_kernel_sizes=None, upscale_logits=False, 
                  max_num_features=256, basic_block=ConvDropoutNormNonlin,
-                 seg_output_use_bias=False):
+                 seg_output_use_bias=False, direct_supervision=True):
         
         super(UNet, self).__init__()
         conv_op = eval(conv_op)
@@ -64,6 +64,7 @@ class UNet(BaseModel):
         self.final_nonlin = final_nonlin
         self._deep_supervision = deep_supervision
         self.do_ds = deep_supervision
+        self.direct_supervision = direct_supervision
 
         if conv_op == nn.Conv2d:
             upsample_mode = 'bilinear'
@@ -144,7 +145,10 @@ class UNet(BaseModel):
             elif u == num_pool - 1:
                 # the last layer
                 input_channels_u = output_channels_c
-                output_channels_u = max(base_num_features // 2, 2)
+                if self.direct_supervision:
+                    output_channels_u = self.num_classes
+                else:
+                    output_channels_u = max(base_num_features // 2, 2)
                 input_channels_c = output_channels_u
                 output_channels_c = output_channels_u
             else:
@@ -159,7 +163,7 @@ class UNet(BaseModel):
                                           pool_op_kernel_sizes[-(u + 1)], bias=False))
           
             self.conv_blocks_localization.append(nn.Sequential(
-                StackedConvLayers(input_channels_c, output_channels_c, num_conv_per_stage - 1,
+                StackedConvLayers(input_channels_c, output_channels_c, num_conv_per_stage,
                                   self.conv_op, self.conv_kwargs, self.norm_op, self.norm_op_kwargs, self.dropout_op,
                                   self.dropout_op_kwargs, self.nonlin, self.nonlin_kwargs, basic_block=basic_block)))
             
@@ -207,9 +211,13 @@ class UNet(BaseModel):
             x = self.tu[u](x)
             if u != len(self.tu) - 1:
                 x = torch.cat((x, skips[-(u + 1)]), dim=1)
-            x = self.conv_blocks_localization[u](x)
-            if lateral_supervision or u == len(self.tu) - 1:
-                seg_outputs.append(self.final_nonlin(self.seg_outputs[u](x)))
+
+            if self.direct_supervision and u == len(self.tu) - 1:
+                seg_outputs.append(self.final_nonlin(x))
+            else:
+                x = self.conv_blocks_localization[u](x)
+                if lateral_supervision or u == len(self.tu) - 1:
+                    seg_outputs.append(self.final_nonlin(self.seg_outputs[u](x)))
         if lateral_supervision:
             return tuple([seg_outputs[-1]] + [i(j) for i, j in
                                               zip(list(self.upscale_logits_ops)[::-1], seg_outputs[:-1][::-1])])

@@ -1,6 +1,6 @@
 {
 "input_channels": 1, 
-"base_num_features": 2, 
+"base_num_features": 8, 
 "num_classes": 2,
 "pool_op_kernel_sizes": [[1,2,2], [2,2,2], [2,2,2], [2,2,2], [2,2,2], [2,2,2], [2,2,2]],
 "conv_kernel_sizes": [[3,3,3], [3,3,3], [3,3,3], [3,3,3], [3,3,3], [3,3,3], [3,3,3]],
@@ -21,5 +21,6 @@
 "upscale_logits": false,
 "max_num_features": 256,
 "basic_block": "ConvDropoutNormNonlin",
-"seg_output_use_bias": false
+"seg_output_use_bias": false,
+"direct_supervision": true
 }
