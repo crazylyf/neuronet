@@ -21,6 +21,7 @@ export NODE_RANK=0
 export WORLD_SIZE=$((NUM_NODES * $NUM_GPUS_PER_NODE))
 
 # launch our script w/ `torch.distributed.launch`
+CUDA_VISIBLE_DEVICES=0,1 nohup \
 python -u -m torch.distributed.launch \
     --nproc_per_node=$NUM_GPUS_PER_NODE \
     --nnodes=$NUM_NODES \
@@ -30,5 +31,6 @@ python -u -m torch.distributed.launch \
     --max_epochs 50 \
     --save_folder ${exp_folder} \
     --amp \
-    --batch_size 2
+    --batch_size 1 \
+    > ${exp_folder}/fullsize_ddp.log & 
 

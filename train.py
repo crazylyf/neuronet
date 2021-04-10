@@ -137,7 +137,7 @@ def validate(model, val_loader, device, crit_ce, crit_dice, epoch, debug=True, d
 def train():
 
     if args.deterministic:
-        util.set_deterministic(deterministic=True, seed=1024)
+        util.set_deterministic(deterministic=True, seed=1025)
 
     # for output folder
     if args.is_master and not os.path.exists(args.save_folder):
