@@ -15,13 +15,21 @@ import torch
 import torch.nn.functional as F
 
 def init_device(device_name):
-    if device_name == 'cpu':
-        device = torch.device(device_name)
-    elif device_name[:4] == 'cuda':
-        if torch.cuda.is_available():
+    if type(device_name) == int:
+        if torch.cuda_is_available():
+            device = torch.cuda.device(device_name)
+        else:
+            raise EnvironmentError("GPU is not accessible!")
+    elif type(device_name) == str:
+        if device_name == 'cpu':
             device = torch.device(device_name)
+        elif device_name[:4] == 'cuda':
+            if torch.cuda.is_available():
+                device = torch.device(device_name)
+        else:
+            raise ValueError("Invalid name for device")
     else:
-        raise ValueEror("Invalid argument for device_name")
+        raise NotImplementedError
     return device
 
 def set_deterministic(deterministic=True, seed=1024):
