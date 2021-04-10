@@ -17,7 +17,7 @@ import torch.nn.functional as F
 def init_device(device_name):
     if type(device_name) == int:
         if torch.cuda.is_available():
-            device = torch.cuda.device(device_name)
+            device = torch.device(device_name)
         else:
             raise EnvironmentError("GPU is not accessible!")
     elif type(device_name) == str:
