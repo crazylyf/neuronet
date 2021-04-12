@@ -231,7 +231,7 @@ class RandomScale(AbstractTransform):
             # for the spacing
             if self.update_spacing:
                 target_spacing = target_shape / shape * np.array(spacing)
-                target_spacing /= target_spacing.max()
+                #target_spacing /= target_spacing.max()
             else:
                 target_spacing = spacing
             return img, new_tree, targt_spacing
@@ -251,8 +251,9 @@ class RandomCrop(AbstractTransform):
         
         shape, target_shape = get_random_shape(img, self.crop_range, self.per_axis)
         
+        new_img = np.zeros((img.shape[0], *target_shape), dtype=img.dtype)
         for c in range(img.shape[0]):
-            img[c],sz,sy,sx = image_util.random_crop_3D_image(img[c], target_shape)
+            new_img[c],sz,sy,sx = image_util.random_crop_3D_image(img[c], target_shape)
         # processing the tree
         new_tree = []
         for leaf in tree:
@@ -261,12 +262,13 @@ class RandomCrop(AbstractTransform):
             y = y - sy
             z = z - sz
             new_tree.append((idx,type_,x,y,z,r,p))
-        return img, new_tree, spacing
+        return new_img, new_tree, spacing
 
 class RandomPadding(AbstractTransform):
     def __init__(self, p=0.5, pad_range=(1, 1.2), per_axis=True):
         super(RandomPadding, self).__init__(p)
         self.pad_range = pad_range
+        assert pad_range[0] >= 1 and pad_range[1] >= pad_range[0]
         self.per_axis = per_axis
 
     def __call__(self, img, tree=None, spacing=None):
@@ -274,7 +276,24 @@ class RandomPadding(AbstractTransform):
             return img, tree, spacing
         
         shape, target_shape = get_random_shape(img, self.pad_range, self.per_axis)
-        raise NotImplementedError
+        for si, ti in zip(shape, target_shape):
+            assert si <= ti
+        
+        new_img = np.zeros((img.shape[0], *target_shape), dtype=img.dtype)
+        sz = np.random.randint(0, target_shape[0] - shape[0])
+        sy = np.random.randint(0, target_shape[1] - shape[1])
+        sx = np.random.randint(0, target_shape[2] - shape[2])
+        for c in range(len(new_img)):
+            new_img[c][sz:sz+shape[0], sy:sy+shape[1], sx:sx+shape[2]] = img
+        # for spacing
+        new_tree = []
+        for leaf in tree:
+            idx, type_, x, y, z, r, p = leaf
+            x = x + sx
+            y = y + sy
+            z = z + sz
+            new_tree.append((idx,type_,x,y,z,r,p))
+        return new_img, new_tree, spacing
 
 class RandomRotation(AbstractTransform):
     def __init__(self, p=0.5):
