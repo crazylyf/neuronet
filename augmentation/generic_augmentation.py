@@ -185,13 +185,15 @@ class RandomMirror(AbstractTransform):
         return img, tree, spacing
                 
 
-#The following geometric transformation can be composed into a unique geometric transformation
+#The following geometric transformation can be composed into an unique geometric transformation. 
+# But I prefer to use this separate versions, since they are implemented with matrix production, 
+# which is much more efficient. 
 class RandomScale(AbstractTransform):
-    def __init__(self, p=0.5):
+    def __init__(self, p=0.5, scale_range=(0.75,1.25)):
         super(AbstractTransform, self).__init__(p)
 
     def __call__(self, img, tree=None, spacing=None):
-        raise NotImplementedError
+        
     
 class RandomCrop(AbstractTransform):
     def __init__(self, p=0.5, crop_scale=0.75):
