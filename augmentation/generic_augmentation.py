@@ -7,6 +7,7 @@
 #   Author       : Yufeng Liu
 #   Date         : 2021-04-02
 #   Description  : Some codes are borrowed from ssd.pytorch: https://github.com/amdegroot/ssd.pytorch
+#                  And some augmentation implementations are directly copied from nnUNet.
 #
 #================================================================
 
@@ -17,6 +18,15 @@ import SimpleITK as sitk
 from batchgenerators.augmentations.utils import create_zero_centered_coordinate_mesh, elastic_deform_coordinates, interpolate_img, rotate_coords_2d, rotate_coords_3d, scale_coords, elastic_deform_coordinates_2, resize_multichannel_image
 
 from neuronet.utils import image_util
+
+def get_random_shape(img, scale_range, per_axis):
+    shape = np.array(img[0].shape)
+    if per_axis:
+        scales = np.random.uniform(*scale_range, size=len(shape))
+    else:
+        scales = np.array([np.random.uniform(*scale_range)] * len(shape))
+    target_shape = np.round(shape * scales).astype(np.int)
+    return shape, target_shape
 
 class Compose(object):
     """Composes several augmentations together.
@@ -41,6 +51,19 @@ class Compose(object):
 class AbstractTransform(object):
     def __init__(self, p=0.5):
         self.p = p
+        
+class ConvertToFloat(object):
+    """
+    Most augmentation assumes the input image of float type, so it is always recommended to 
+    call this class before all augmentations.
+    """
+    def __init__(self, dtype=np.float32):
+        self.dtype = dtype
+    
+    def __call__(self, img, tree=None, spacing=None)
+        if not img.dtype.name.startswith('float'):
+            img = img.astype(np.float32)
+        return img, tree, spacing
 
 
 # Coordinate-invariant augmentation
@@ -123,15 +146,7 @@ class RandomResample(AbstractTransform):
         
     def __call__(self, img, tree=None, spacing=None):
         if np.random.random() < self.p:
-            if not img.dtype.name.startswith('float'):
-                img = img.astype(np.float32)
-
-            shape = np.array(img[0].shape)
-            if self.per_axis:
-                zoom = np.random.uniform(*self.zoom_range, size=len(shape))
-            else:
-                zoom = np.random.uniform(*self.zoom_range)
-            target_shape = np.round(shape * zoom).astype(np.int)
+            shape, target_shape = get_random_shape(img, self.zoom_range, self.per_axis)
 
             #print(f'RandomSample with zoom factor: {zoom}')
             for c in range(img.shape[0]):
@@ -189,24 +204,55 @@ class RandomMirror(AbstractTransform):
 # But I prefer to use this separate versions, since they are implemented with matrix production, 
 # which is much more efficient. 
 class RandomScale(AbstractTransform):
-    def __init__(self, p=0.5, scale_range=(0.75,1.25)):
+    def __init__(self, p=0.5, scale_range=(0.85,1.25), per_axis=True, anti_aliasing=False, mode='edge', update_spacing=True):
         super(AbstractTransform, self).__init__(p)
+        self.per_axis = per_axis
+        self.anti_aliasing = anti_aliasing
+        self.mode = mode
+        self.update_spacing = update_spacing
 
     def __call__(self, img, tree=None, spacing=None):
+        if np.random.random() < self.p:
+            shape, target_shape = get_random_shape(img, self.scale_range, self.per_axis)
+            if target_shape.prod() / shape.prod() > 1:
+                # up-scaling
+                order = 0
+            else:
+                order = 1
+            
+            for c in range(img.shape[0]):
+                img[c] = resize(img[c], target_shape, order=order, mode=self.mode, anti_aliasing=self.anti_aliasing)
+            
+            # processing for the tree structure
+            new_tree = []
+            for leaf in tree:
+                idx, type_, x, y, z, r, p = leaf
+                new_tree.append((idx,type_,x*scales[2],y*scales[1],z*scale[0],r,p))
+            # for the spacing
+            if self.update_spacing:
+                target_spacing = target_shape / shape * np.array(spacing)
+                target_spacing /= target_spacing.max()
+            else:
+                target_spacing = spacing
+            return img, new_tree, targt_spacing
         
+        return img, tree, spacing
+            
     
 class RandomCrop(AbstractTransform):
-    def __init__(self, p=0.5, crop_scale=0.75):
+    def __init__(self, p=0.5, crop_range=(0.85, 1), per_axis=True):
         super(RandomCrop, self).__init__(p)
-        self.crop_scale = crop_scale
+        self.crop_range = crop_range
+        self.per_axis = per_axis
 
     def __call__(self, img, tree=None, spacing=None):
         if np.random.random() > self.p:
             return img, tree, spacing
         
-        raise NotImplementedError
-          
-        img_crop,sz,sy,sx = image_util.random_crop_3D_image(img, self.crop_size)
+        shape, target_shape = get_random_shape(img, self.crop_range, self.per_axis)
+        
+        for c in range(img.shape[0]):
+            img[c],sz,sy,sx = image_util.random_crop_3D_image(img[c], target_shape)
         # processing the tree
         new_tree = []
         for leaf in tree:
@@ -214,15 +260,20 @@ class RandomCrop(AbstractTransform):
             x = x - sx
             y = y - sy
             z = z - sz
-            new_tree.append((idx,type_,x,y,z,r,p)) 
-
-        return img_crop, new_tree, spacing
+            new_tree.append((idx,type_,x,y,z,r,p))
+        return img, new_tree, spacing
 
 class RandomPadding(AbstractTransform):
-    def __init__(self, p=0.5):
+    def __init__(self, p=0.5, pad_range=(1, 1.2), per_axis=True):
         super(RandomPadding, self).__init__(p)
+        self.pad_range = pad_range
+        self.per_axis = per_axis
 
     def __call__(self, img, tree=None, spacing=None):
+        if np.random.random() > self.p:
+            return img, tree, spacing
+        
+        shape, target_shape = get_random_shape(img, self.pad_range, self.per_axis)
         raise NotImplementedError
 
 class RandomRotation(AbstractTransform):
@@ -232,6 +283,7 @@ class RandomRotation(AbstractTransform):
     def __call__(self, img, tree=None, spacing=None):
         raise NotImplementedError
 
+# RandomShift is an subset of composition of Crop and Padding, thus we do not need to implement it.
 class RandomShift(AbstractTransform):
     def __init__(self, p=0.5):
         super(RandomShift, self).__init__(p)
@@ -374,6 +426,7 @@ class RandomGeometric(AbstractTransform):
 class InstanceAugmentation(object):
     def __init__(self, p=0.2):
         self.augment = Compose([
+            ConvertToFloat(),
             RandomSaturation(p=p),
             RandomBrightness(p=p),
             #RandomGaussianNoise(p=p),
