@@ -15,10 +15,14 @@ import pickle
 import torch.utils.data as tudata
 import SimpleITK as sitk
 import torch
+import sys
 
 from swc_handler import parse_swc
 from neuronet.augmentation.generic_augmentation import InstanceAugmentation
 from neuronet.datasets.swc_processing import trim_swc, swc_to_image
+
+# To avoid the recursionlimit error, maybe encountered in trim_swc
+sys.setrecursionlimit(30000)
 
 class GenericDataset(tudata.Dataset):
 

@@ -265,6 +265,6 @@ if __name__ == '__main__':
     num_threads = 8
     gp = GenericPreprocessor()
     gp.run(data_dir, spacing_file, output_dir, is_train=is_train, num_threads=num_threads)
-    gp.dataset_split(output_dir, val_ratio=0.1, test_ratio=0.1, seed=1024, img_ext='npz', lab_ext='swc')
+    gp.dataset_split(output_dir, val_ratio=0.06, test_ratio=0.03, seed=1024, img_ext='npz', lab_ext='swc')
     
 
