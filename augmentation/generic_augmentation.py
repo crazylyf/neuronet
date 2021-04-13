@@ -11,6 +11,7 @@
 #
 #================================================================
 
+import shutil
 import numpy as np
 from skimage.transform import resize
 from scipy.ndimage import gaussian_filter
@@ -28,7 +29,7 @@ def get_random_shape(img, scale_range, per_axis):
     target_shape = np.round(shape * scales).astype(np.int)
     return shape, target_shape
 
-def image_scale_4D(img, tree, spacing, shape, target_shape, mode, anti_aliasing, update_spacing)
+def image_scale_4D(img, tree, spacing, shape, target_shape, mode, anti_aliasing, update_spacing):
     if target_shape.prod() / shape.prod() > 1:
         # up-scaling
         order = 0
@@ -53,7 +54,7 @@ def image_scale_4D(img, tree, spacing, shape, target_shape, mode, anti_aliasing,
             spacing = scales * np.array(spacing)
     return img, tree, spacing
 
-def random_crop_image_4D(img, tree, spacing, target_shape)
+def random_crop_image_4D(img, tree, spacing, target_shape):
     new_img = np.zeros((img.shape[0], *target_shape), dtype=img.dtype)
     for c in range(img.shape[0]):
         new_img[c],sz,sy,sx = image_util.random_crop_3D_image(img[c], target_shape)
@@ -102,9 +103,9 @@ class ConvertToFloat(object):
     def __init__(self, dtype=np.float32):
         self.dtype = dtype
     
-    def __call__(self, img, tree=None, spacing=None)
+    def __call__(self, img, tree=None, spacing=None):
         if not img.dtype.name.startswith('float'):
-            img = img.astype(np.float32)
+            img = img.astype(self.dtype)
         return img, tree, spacing
 
 
@@ -261,7 +262,7 @@ class RandomScale(AbstractTransform):
         return img, tree, spacing
 
 class ScaleToFixedSize(AbstractTransform):
-    def __init__(self, p=1.0, target_shape, anti_aliasing=False, mode='edge', update_spacing=True):
+    def __init__(self, p, target_shape, anti_aliasing=False, mode='edge', update_spacing=True):
         super(ScaleToFixedSize, self).__init__(p)
         self.target_shape = target_shape
         self.anti_aliasing = anti_aliasing
@@ -323,11 +324,12 @@ class CenterCrop(AbstractTransform):
         
 
 class RandomPadding(AbstractTransform):
-    def __init__(self, p=0.5, pad_range=(1, 1.2), per_axis=True):
+    def __init__(self, p=0.5, pad_range=(1, 1.2), per_axis=True, pad_value=None):
         super(RandomPadding, self).__init__(p)
         self.pad_range = pad_range
         assert pad_range[0] >= 1 and pad_range[1] >= pad_range[0]
         self.per_axis = per_axis
+        self.pad_value = pad_value
 
     def __call__(self, img, tree=None, spacing=None):
         if np.random.random() > self.p:
@@ -336,22 +338,31 @@ class RandomPadding(AbstractTransform):
         shape, target_shape = get_random_shape(img, self.pad_range, self.per_axis)
         for si, ti in zip(shape, target_shape):
             assert si <= ti
-        
-        new_img = np.zeros((img.shape[0], *target_shape), dtype=img.dtype)
+        if self.pad_value is None:
+            # use lowerest value
+            pad_value = img.min()
+        else:
+            pad_value = self.pad_value
+
+        new_img = np.ones((img.shape[0], *target_shape), dtype=img.dtype) * pad_value
+        #import ipdb; ipdb.set_trace()
         sz = np.random.randint(0, target_shape[0] - shape[0])
         sy = np.random.randint(0, target_shape[1] - shape[1])
         sx = np.random.randint(0, target_shape[2] - shape[2])
         for c in range(len(new_img)):
             new_img[c][sz:sz+shape[0], sy:sy+shape[1], sx:sx+shape[2]] = img
-        # for spacing
-        new_tree = []
-        for leaf in tree:
-            idx, type_, x, y, z, r, p = leaf
-            x = x + sx
-            y = y + sy
-            z = z + sz
-            new_tree.append((idx,type_,x,y,z,r,p))
-        return new_img, new_tree, spacing
+        if tree is not None:
+            # for tree
+            new_tree = []
+            for leaf in tree:
+                idx, type_, x, y, z, r, p = leaf
+                x = x + sx
+                y = y + sy
+                z = z + sz
+                new_tree.append((idx,type_,x,y,z,r,p))
+            return new_img, new_tree, spacing
+        else:
+            return new_img, tree, spacing
 
 class RandomRotation(AbstractTransform):
     def __init__(self, p=0.5):
@@ -501,15 +512,20 @@ class RandomGeometric(AbstractTransform):
         return img_p, tree, spacing
 
 class InstanceAugmentation(object):
-    def __init__(self, p=0.2):
+    def __init__(self, p=0.2, imgshape=(256,512,512)):
         self.augment = Compose([
             ConvertToFloat(),
             RandomSaturation(p=p),
             RandomBrightness(p=p),
             #RandomGaussianNoise(p=p),
             RandomGaussianBlur(p=p),
-            RandomResample(p=p),
-            RandomMirror(p=p)
+            #RandomResample(p=p),
+            RandomPadding(p),
+            RandomCrop(p),
+            RandomScale(p),
+            RandomMirror(p=p),
+            CenterCrop(1.0),
+            ScaleToFixedSize(1.0, imgshape),
         ])
 
     def __call__(self, img, tree=None, spacing=None):
@@ -520,39 +536,32 @@ if __name__ == '__main__':
     import time
     from neuronet.utils.image_util import normalize_normal, unnormalize_normal
     from neuronet.utils.util import set_deterministic
+    from swc_handler import parse_swc, write_swc
 
     
     file_prefix = '8315_19523_2299'
-    imgfile = f'/home/lyf/data/seu_mouse/crop_data/dendriteImageSecR/tiff/17302/{file_prefix}.tiff'
-    set_deterministic(True, seed=1024)
-    img = sitk.GetArrayFromImage(sitk.ReadImage(imgfile))[None]
-    img = img.astype(np.float32)
+    imgfile = f'../data/task0003_cropAll/{file_prefix}.npz'
+    swcfile = f'../data/task0003_cropAll/{file_prefix}.swc'
+    #set_deterministic(True, seed=1024)
+    #img = sitk.GetArrayFromImage(sitk.ReadImage(imgfile))[None]
+    #img = img.astype(np.float32)
     # normalize to N(0,1) distribution
-    img = normalize_normal(img)
+    #img = normalize_normal(img)
+
+    img = np.load(imgfile)['data']    # 4D
+    if 1:
+        # save original image for visual inspection
+        img_orig_un = unnormalize_normal(img).astype(np.uint8)[0]
+        sitk.WriteImage(sitk.GetImageFromArray(img_orig_un), 'original.tiff')
+        shutil.copy(swcfile, 'original.swc')
+
     print(f'Statistics of original image: {img.mean()}, {img.std()}, {img.min()}, {img.max()}')
-    tree = None
-    spacing = [1.0, 0.2, 0.2]
-    '''patch_size = [256, 512, 512]    # in z,y,x order
-    p_rotation = 0.0
-    angle_x = (0, 2*np.pi)
-    angle_y = (0, 2*np.pi)
-    angle_z = (0, 2*np.pi)
-    p_scale = 0.0
-    axis_scale = True
-    random_crop = False
-    p_elastic_deform = 1.0
-    aug = RandomGeometric(patch_size, p=1., patch_center_dist_from_border=30,
-                 p_elastic_deform=p_elastic_deform, deformation_scale=(0, 0.25),
-                 p_rotation=p_rotation, angle_x=angle_x, 
-                 angle_y=angle_y, angle_z=angle_z,
-                 p_scale=p_scale, scale=(0.75,1.25), axis_scale=axis_scale,
-                 p_axis_scale=0.5,
-                 border_mode='nearest', border_cval=0,
-                 order=3, random_crop=random_crop)
-    '''
+    tree = parse_swc(swcfile)
+    spacing = [1.0, 0.23, 0.23]
     t0 = time.time()
     
-    aug = InstanceAugmentation(p=1.0)
+    #aug = InstanceAugmentation(p=1.0)
+    aug = RandomPadding(1.0)
     img_new, tree_new, spacing = aug(img, tree, spacing)
     print(f'Augmented image statistics: {img_new.mean()}, {img_new.std()}, {img_new.min()}, {img_new.max()}')
     print(f'Timed used: {time.time()-t0}s')
@@ -561,3 +570,4 @@ if __name__ == '__main__':
     img_unn = img_unn.astype(np.uint8)
     print(f'Image statstics: {img_unn.mean()}, {img_unn.std()}, {img_unn.min()}, {img_unn.max()}')
     sitk.WriteImage(sitk.GetImageFromArray(img_unn[0]), f'{file_prefix}_aug.tiff')
+    write_swc(tree_new, f'{file_prefix}_aug.swc')
