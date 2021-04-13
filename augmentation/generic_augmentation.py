@@ -554,21 +554,30 @@ class RandomGeometric(AbstractTransform):
         return img_p, tree, spacing
 
 class InstanceAugmentation(object):
-    def __init__(self, p=0.2, imgshape=(256,512,512)):
-        self.augment = Compose([
-            ConvertToFloat(),
-            RandomCenterCrop(1.0, imgshape),
-            RandomSaturation(p=p),
-            RandomBrightness(p=p),
-            #RandomGaussianNoise(p=p),
-            RandomGaussianBlur(p=p),
-            #RandomResample(p=p),
-            #RandomPadding(p),
-            #RandomCrop(p),
-            #RandomScale(p),
-            RandomMirror(p=p),
-            ScaleToFixedSize(1.0, imgshape),
-        ])
+    def __init__(self, p=0.2, imgshape=(256,512,512), phase='train'):
+        if phase == 'train':
+            self.augment = Compose([
+                ConvertToFloat(),
+                RandomCenterCrop(1.0, imgshape),
+                RandomSaturation(p=p),
+                RandomBrightness(p=p),
+                #RandomGaussianNoise(p=p),
+                RandomGaussianBlur(p=p),
+                #RandomResample(p=p),
+                #RandomPadding(p),
+                #RandomCrop(p),
+                #RandomScale(p),
+                RandomMirror(p=p),
+                ScaleToFixedSize(1.0, imgshape),
+            ])
+        elif phase == 'val' or phase == 'test':
+            self.augment = Compose([
+                ConvertToFloat(),
+                RandomCenterCrop(1.0, imgshape),
+                ScaleToFixedSize(1.0, imgshape),
+            ])
+        else:
+            raise NotImplementedError
 
     def __call__(self, img, tree=None, spacing=None):
         return self.augment(img, tree, spacing)

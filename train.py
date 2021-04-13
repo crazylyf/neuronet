@@ -64,7 +64,7 @@ parser.add_argument('--step_per_epoch', default=200, type=int,
                     help='step per epoch')
 parser.add_argument('--deterministic', action='store_true',
                     help='run in deterministic mode')
-parser.add_argument('--test_frequency', default=1, type=int,
+parser.add_argument('--test_frequency', default=3, type=int,
                     help='frequency of testing')
 parser.add_argument('--local_rank', default=-1, type=int, metavar='N', 
                     help='Local process rank')  # DDP required
@@ -164,7 +164,8 @@ def train():
     val_loader = tudata.DataLoader(val_set, args.batch_size, 
                                     num_workers=args.num_workers, 
                                     sampler=val_sampler,
-                                    shuffle=False, pin_memory=True)
+                                    shuffle=False, pin_memory=True,
+                                    drop_last=True)
     train_iter = iter(train_loader)
     val_iter = iter(val_loader)
 

@@ -27,15 +27,7 @@ class GenericDataset(tudata.Dataset):
         self.imgshape = imgshape
 
         # augmentations
-        if phase == 'train':
-            self.augment = InstanceAugmentation()
-            #self.augment = lambda *x: x
-        elif phase == 'val':
-            self.augment = lambda *x: x
-        elif phase == 'test':
-            self.augment = lambda *x: x
-        else:
-            raise NotImplementedError('phase should be train/val/test')
+        self.augment = InstanceAugmentation(p=0.2, imgshape=imgshape, phase=phase)
     
     @staticmethod
     def load_data_list(split_file, phase):
