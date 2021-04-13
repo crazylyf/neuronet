@@ -36,8 +36,9 @@ def image_scale_4D(img, tree, spacing, shape, target_shape, mode, anti_aliasing,
     else:
         order = 1
     
+    new_img = np.zeros((img.shape[0], *target_shape), dtype=img.dtype)
     for c in range(img.shape[0]):
-        img[c] = resize(img[c], target_shape, order=order, mode=mode, anti_aliasing=anti_aliasing)
+        new_img[c] = resize(img[c], target_shape, order=order, mode=mode, anti_aliasing=anti_aliasing)
     
     # processing for the tree structure
     if tree is not None:
@@ -45,14 +46,14 @@ def image_scale_4D(img, tree, spacing, shape, target_shape, mode, anti_aliasing,
         new_tree = []
         for leaf in tree:
             idx, type_, x, y, z, r, p = leaf
-            new_tree.append((idx,type_,x*scales[2],y*scales[1],z*scale[0],r,p))
+            new_tree.append((idx,type_,x*scales[2],y*scales[1],z*scales[0],r,p))
         tree = new_tree
 
     # for the spacing
     if spacing is not None:
         if update_spacing:
             spacing = scales * np.array(spacing)
-    return img, tree, spacing
+    return new_img, tree, spacing
 
 def random_crop_image_4D(img, tree, spacing, target_shape):
     new_img = np.zeros((img.shape[0], *target_shape), dtype=img.dtype)
@@ -261,10 +262,11 @@ class RandomScale(AbstractTransform):
 
         return img, tree, spacing
 
+# verified
 class ScaleToFixedSize(AbstractTransform):
     def __init__(self, p, target_shape, anti_aliasing=False, mode='edge', update_spacing=True):
         super(ScaleToFixedSize, self).__init__(p)
-        self.target_shape = target_shape
+        self.target_shape = np.array(target_shape)
         self.anti_aliasing = anti_aliasing
         self.mode = mode
         self.update_spacing = update_spacing
@@ -292,23 +294,62 @@ class RandomCrop(AbstractTransform):
         img, tree, spacing = random_crop_image_4D(img, tree, spacing, target_shape)
         return img, tree, spacing       
 
-class CenterCrop(AbstractTransform):
-    def __init__(self, p=1.0, dim_ratio=None):
-        super(CenterCrop, self).__init__(p)
-        self.dim_ratio = dim_ratio
+#verified
+class RandomCenterCrop(AbstractTransform):
+    def __init__(self, p=1.0, reference_shape=None, max_aniso_scale=1.2):
+        super(RandomCenterCrop, self).__init__(p)
+        self.reference_shape = reference_shape
+        self.max_aniso_scale = max_aniso_scale
 
     def __call__(self, img, tree=None, spacing=None):
         if np.random.random() > self.p:
             return img, tree, spacing
 
         shape = np.array(img[0].shape)
-        dim_ratio = np.array(self.dim_ratio)
-        scales = shape / self.dim_ratio
+        reference_shape = np.array(self.reference_shape)
+        scales = shape / self.reference_shape
         min_dim = np.argmin(scales)
-        target_shape = np.round(scales[min_dim] * shape).astype(int)
+
+        target_shape = reference_shape.copy()
+        for i in range(len(target_shape)):
+            min_size = int(round(scales[min_dim] * reference_shape[i]))
+            max_size = min(shape[i], int(self.max_aniso_scale * min_size))
+            target_shape[i] = np.random.randint(min_size, max_size+1)
+        target_shape = target_shape.astype(np.int)
         # do center cropping
-        sz,sy,sx = (target_shape - shape) // 2
-        img = img[:,sz:sz+shape[0],sy:sy+shape[1],sx:sx+shape[2]]
+        sz,sy,sx = (shape - target_shape) // 2
+        img = img[:,sz:sz+target_shape[0],sy:sy+target_shape[1],sx:sx+target_shape[2]]
+        
+        if tree is not None:
+            new_tree = []
+            for leaf in tree:
+                idx, type_, x, y, z, r, p = leaf
+                x = x - sx
+                y = y - sy
+                z = z - sz
+                new_tree.append((idx,type_,x,y,z,r,p))
+            return img, new_tree, spacing
+        else:
+            return img, tree, spacing
+
+# verified
+class CenterCrop(AbstractTransform):
+    def __init__(self, p=1.0, reference_shape=None):
+        super(CenterCrop, self).__init__(p)
+        self.reference_shape = reference_shape
+
+    def __call__(self, img, tree=None, spacing=None):
+        if np.random.random() > self.p:
+            return img, tree, spacing
+
+        shape = np.array(img[0].shape)
+        reference_shape = np.array(self.reference_shape)
+        scales = shape / self.reference_shape
+        min_dim = np.argmin(scales)
+        target_shape = np.round(scales[min_dim] * reference_shape).astype(int)
+        # do center cropping
+        sz,sy,sx = (shape - target_shape) // 2
+        img = img[:,sz:sz+target_shape[0],sy:sy+target_shape[1],sx:sx+target_shape[2]]
         
         if tree is not None:
             new_tree = []
@@ -323,6 +364,7 @@ class CenterCrop(AbstractTransform):
             return img, tree, spacing
         
 
+# NOTE: not verified, take care!
 class RandomPadding(AbstractTransform):
     def __init__(self, p=0.5, pad_range=(1, 1.2), per_axis=True, pad_value=None):
         super(RandomPadding, self).__init__(p)
@@ -515,16 +557,16 @@ class InstanceAugmentation(object):
     def __init__(self, p=0.2, imgshape=(256,512,512)):
         self.augment = Compose([
             ConvertToFloat(),
+            RandomCenterCrop(1.0, imgshape),
             RandomSaturation(p=p),
             RandomBrightness(p=p),
             #RandomGaussianNoise(p=p),
             RandomGaussianBlur(p=p),
             #RandomResample(p=p),
-            RandomPadding(p),
-            RandomCrop(p),
-            RandomScale(p),
+            #RandomPadding(p),
+            #RandomCrop(p),
+            #RandomScale(p),
             RandomMirror(p=p),
-            CenterCrop(1.0),
             ScaleToFixedSize(1.0, imgshape),
         ])
 
@@ -549,9 +591,9 @@ if __name__ == '__main__':
     #img = normalize_normal(img)
 
     img = np.load(imgfile)['data']    # 4D
-    if 1:
+    if 0:
         # save original image for visual inspection
-        img_orig_un = unnormalize_normal(img).astype(np.uint8)[0]
+        img_orig_un = unnormalize_normal(img.copy()).astype(np.uint8)[0]
         sitk.WriteImage(sitk.GetImageFromArray(img_orig_un), 'original.tiff')
         shutil.copy(swcfile, 'original.swc')
 
@@ -561,7 +603,7 @@ if __name__ == '__main__':
     t0 = time.time()
     
     #aug = InstanceAugmentation(p=1.0)
-    aug = RandomPadding(1.0)
+    aug = InstanceAugmentation(0.2, (256,512,512))
     img_new, tree_new, spacing = aug(img, tree, spacing)
     print(f'Augmented image statistics: {img_new.mean()}, {img_new.std()}, {img_new.min()}, {img_new.max()}')
     print(f'Timed used: {time.time()-t0}s')
