@@ -30,7 +30,7 @@ from swc_handler import parse_swc, write_swc
 from path_util import get_file_prefix
 
 from neuronet.utils.image_util import normalize_normal
-from neuronet.datasets.preprocess import soma_labelling, trim_swc, load_spacing
+from neuronet.datasets.swc_processing import soma_labelling, trim_swc, load_spacing
 
 def load_data(data_dir, spacing_file, is_train=True):
     '''data_dir = '/home/lyf/data/seu_mouse/crop_data/dendriteImageSecR'
@@ -68,8 +68,9 @@ def calc_spacing_anisotropy(spacing):
 
 
 class GenericPreprocessor(object):
-    def __init__(self, separate_z_thresh=2):
+    def __init__(self, separate_z_thresh=2, label_soma=True):
         self.separate_z_thresh = separate_z_thresh
+        self.label_soma = label_soma
 
     def remove_nans(self, data):
         # inplace modification of nans
@@ -168,6 +169,10 @@ class GenericPreprocessor(object):
         print(f'--> Processing for image: {imgfile}')
         # load the image and annotated tree
         image = sitk.GetArrayFromImage(sitk.ReadImage(imgfile))
+        # manually labelling the soma
+        if self.label_soma:
+            image = soma_labelling(image, z_ratio=0.3, r=9)
+
         if image.ndim == 3:
             image = image[None]
         tree = None
@@ -250,9 +255,9 @@ class GenericPreprocessor(object):
 
         
 if __name__ == '__main__':
-    data_dir = '/home/lyf/data/seu_mouse/crop_data/dendriteImageSecR'
+    data_dir = '/PBshare/lyf/transtation/seu_mouse/crop_data/dendriteImageSecR/'
     spacing_file = '/home/lyf/data/seu_mouse/crop_data/scripts/AllbrainResolutionInfo.csv'
-    output_dir = '/home/lyf/Research/auto_trace/neuronet/data/task0001_17302'
+    output_dir = '/home/lyf/Research/auto_trace/neuronet/data/task0003_cropAll'
     is_train = True
     num_threads = 8
     gp = GenericPreprocessor()
