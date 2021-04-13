@@ -28,6 +28,48 @@ def get_random_shape(img, scale_range, per_axis):
     target_shape = np.round(shape * scales).astype(np.int)
     return shape, target_shape
 
+def image_scale_4D(img, tree, spacing, shape, target_shape, mode, anti_aliasing, update_spacing)
+    if target_shape.prod() / shape.prod() > 1:
+        # up-scaling
+        order = 0
+    else:
+        order = 1
+    
+    for c in range(img.shape[0]):
+        img[c] = resize(img[c], target_shape, order=order, mode=mode, anti_aliasing=anti_aliasing)
+    
+    # processing for the tree structure
+    if tree is not None:
+        scales = target_shape / shape
+        new_tree = []
+        for leaf in tree:
+            idx, type_, x, y, z, r, p = leaf
+            new_tree.append((idx,type_,x*scales[2],y*scales[1],z*scale[0],r,p))
+        tree = new_tree
+
+    # for the spacing
+    if spacing is not None:
+        if update_spacing:
+            spacing = scales * np.array(spacing)
+    return img, tree, spacing
+
+def random_crop_image_4D(img, tree, spacing, target_shape)
+    new_img = np.zeros((img.shape[0], *target_shape), dtype=img.dtype)
+    for c in range(img.shape[0]):
+        new_img[c],sz,sy,sx = image_util.random_crop_3D_image(img[c], target_shape)
+    # processing the tree
+    if tree is not None:
+        new_tree = []
+        for leaf in tree:
+            idx, type_, x, y, z, r, p = leaf
+            x = x - sx
+            y = y - sy
+            z = z - sz
+            new_tree.append((idx,type_,x,y,z,r,p))
+        return new_img, new_tree, spacing
+    return new_img, tree, spacing
+
+
 class Compose(object):
     """Composes several augmentations together.
     Args:
@@ -205,7 +247,7 @@ class RandomMirror(AbstractTransform):
 # which is much more efficient. 
 class RandomScale(AbstractTransform):
     def __init__(self, p=0.5, scale_range=(0.85,1.25), per_axis=True, anti_aliasing=False, mode='edge', update_spacing=True):
-        super(AbstractTransform, self).__init__(p)
+        super(RandomScale, self).__init__(p)
         self.per_axis = per_axis
         self.anti_aliasing = anti_aliasing
         self.mode = mode
@@ -214,28 +256,23 @@ class RandomScale(AbstractTransform):
     def __call__(self, img, tree=None, spacing=None):
         if np.random.random() < self.p:
             shape, target_shape = get_random_shape(img, self.scale_range, self.per_axis)
-            if target_shape.prod() / shape.prod() > 1:
-                # up-scaling
-                order = 0
-            else:
-                order = 1
-            
-            for c in range(img.shape[0]):
-                img[c] = resize(img[c], target_shape, order=order, mode=self.mode, anti_aliasing=self.anti_aliasing)
-            
-            # processing for the tree structure
-            new_tree = []
-            for leaf in tree:
-                idx, type_, x, y, z, r, p = leaf
-                new_tree.append((idx,type_,x*scales[2],y*scales[1],z*scale[0],r,p))
-            # for the spacing
-            if self.update_spacing:
-                target_spacing = target_shape / shape * np.array(spacing)
-                #target_spacing /= target_spacing.max()
-            else:
-                target_spacing = spacing
-            return img, new_tree, targt_spacing
-        
+            img, tree, spacing = image_scale_4D(img, tree, spacing, shape, target_shape, self.mode, self.anti_aliasing, self.update_spacing)
+
+        return img, tree, spacing
+
+class ScaleToFixedSize(AbstractTransform):
+    def __init__(self, p=1.0, target_shape, anti_aliasing=False, mode='edge', update_spacing=True):
+        super(ScaleToFixedSize, self).__init__(p)
+        self.target_shape = target_shape
+        self.anti_aliasing = anti_aliasing
+        self.mode = mode
+        self.update_spacing = update_spacing
+
+    def __call__(self, img, tree=None, spacing=None):
+        if np.random.random() < self.p:
+            shape = np.array(img[0].shape)
+            img, tree, spacing = image_scale_4D(img, tree, spacing, shape, self.target_shape, self.mode, self.anti_aliasing, self.update_spacing)
+
         return img, tree, spacing
             
     
@@ -250,19 +287,40 @@ class RandomCrop(AbstractTransform):
             return img, tree, spacing
         
         shape, target_shape = get_random_shape(img, self.crop_range, self.per_axis)
+
+        img, tree, spacing = random_crop_image_4D(img, tree, spacing, target_shape)
+        return img, tree, spacing       
+
+class CenterCrop(AbstractTransform):
+    def __init__(self, p=1.0, dim_ratio=None):
+        super(CenterCrop, self).__init__(p)
+        self.dim_ratio = dim_ratio
+
+    def __call__(self, img, tree=None, spacing=None):
+        if np.random.random() > self.p:
+            return img, tree, spacing
+
+        shape = np.array(img[0].shape)
+        dim_ratio = np.array(self.dim_ratio)
+        scales = shape / self.dim_ratio
+        min_dim = np.argmin(scales)
+        target_shape = np.round(scales[min_dim] * shape).astype(int)
+        # do center cropping
+        sz,sy,sx = (target_shape - shape) // 2
+        img = img[:,sz:sz+shape[0],sy:sy+shape[1],sx:sx+shape[2]]
         
-        new_img = np.zeros((img.shape[0], *target_shape), dtype=img.dtype)
-        for c in range(img.shape[0]):
-            new_img[c],sz,sy,sx = image_util.random_crop_3D_image(img[c], target_shape)
-        # processing the tree
-        new_tree = []
-        for leaf in tree:
-            idx, type_, x, y, z, r, p = leaf
-            x = x - sx
-            y = y - sy
-            z = z - sz
-            new_tree.append((idx,type_,x,y,z,r,p))
-        return new_img, new_tree, spacing
+        if tree is not None:
+            new_tree = []
+            for leaf in tree:
+                idx, type_, x, y, z, r, p = leaf
+                x = x - sx
+                y = y - sy
+                z = z - sz
+                new_tree.append((idx,type_,x,y,z,r,p))
+            return img, new_tree, spacing
+        else:
+            return img, tree, spacing
+        
 
 class RandomPadding(AbstractTransform):
     def __init__(self, p=0.5, pad_range=(1, 1.2), per_axis=True):

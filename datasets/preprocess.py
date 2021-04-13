@@ -161,11 +161,14 @@ class GenericPreprocessor(object):
                 z = (z - cz0) * scales[0] + cz
                 new_tree.append((idx, type_, x, y, z, rad, pid))
             
-            return new_data.astype(dtype), new_tree
+            return new_data, new_tree
         else:
-            return new_data.astype(dtype), tree
+            return new_data, tree
 
     def _preprocess_sample(self, imgfile, swcfile, imgfile_out, swcfile_out, spacing, target_spacing):
+        #if os.path.exists(imgfile_out) and os.path.exists(swcfile_out):
+        #    return 
+        
         print(f'--> Processing for image: {imgfile}')
         # load the image and annotated tree
         image = sitk.GetArrayFromImage(sitk.ReadImage(imgfile))
