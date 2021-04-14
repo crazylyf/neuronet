@@ -32,6 +32,6 @@ python -u -m torch.distributed.launch \
     --save_folder ${exp_folder} \
     --amp \
     --batch_size 1 \
-    --data_file data/task0003_cropAll/data_splits.pkl \
+    --data_file data/task0003_cropAll/data_split.pkl \
     > ${exp_folder}/fullsize_ddp_cropAll.log & 
 
