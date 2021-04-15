@@ -169,7 +169,7 @@ def train():
                                     sampler=val_sampler,
                                     shuffle=False, pin_memory=True,
                                     drop_last=True, 
-                                    worker_init_fn=worker_init_fn)
+                                    worker_init_fn=util.worker_init_fn)
     train_iter = iter(train_loader)
     val_iter = iter(val_loader)
 
