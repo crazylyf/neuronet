@@ -46,6 +46,10 @@ def set_deterministic(deterministic=True, seed=1024):
 
     return True
 
+def worker_init_fn(worker_id):
+    """Function to avoid numpy.random seed duplication across multi-threads"""
+    np.random.seed(np.random.get_state()[1][0] + worker_id)
+
 def logits_to_seg(logits, thresh=None):
     with torch.no_grad():
         if thresh is not None:

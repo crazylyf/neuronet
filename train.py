@@ -68,6 +68,8 @@ parser.add_argument('--test_frequency', default=3, type=int,
                     help='frequency of testing')
 parser.add_argument('--local_rank', default=-1, type=int, metavar='N', 
                     help='Local process rank')  # DDP required
+parser.add_argument('--seed', default=1025, type=int,
+                    help='Random seed value')
 # network specific
 parser.add_argument('--net_config', default="./models/configs/default_config.json",
                     type=str,
@@ -141,7 +143,7 @@ def validate(model, val_loader, device, crit_ce, crit_dice, epoch, debug=True, d
 def train():
 
     if args.deterministic:
-        util.set_deterministic(deterministic=True, seed=1025)
+        util.set_deterministic(deterministic=True, seed=args.seed)
 
     # for output folder
     if args.is_master and not os.path.exists(args.save_folder):
@@ -160,12 +162,14 @@ def train():
                                     num_workers=args.num_workers, 
                                     shuffle=False, pin_memory=True, 
                                     sampler=train_sampler,
-                                    drop_last=True)
+                                    drop_last=True, 
+                                    worker_init_fn=util.worker_init_fn)
     val_loader = tudata.DataLoader(val_set, args.batch_size, 
                                     num_workers=args.num_workers, 
                                     sampler=val_sampler,
                                     shuffle=False, pin_memory=True,
-                                    drop_last=True)
+                                    drop_last=True, 
+                                    worker_init_fn=worker_init_fn)
     train_iter = iter(train_loader)
     val_iter = iter(val_loader)
 
@@ -205,7 +209,9 @@ def train():
             except StopIteration:
                 # let all processes sync up before starting with a new epoch of training
                 distrib.barrier()
-
+                # reset the random seed, to avoid np.random & dataloader problem
+                np.random.seed(args.seed + epoch)
+                
                 train_iter = iter(train_loader)
                 img, lab, imgfiles, swcfiles = next(train_iter)
 
