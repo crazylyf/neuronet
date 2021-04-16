@@ -16,7 +16,7 @@
 "nonlin_kwargs": {"negative_slope": 1e-2, "inplace": true},
 "deep_supervision": false,
 "dropout_in_localization": false,
-"final_nonlin": "lambda x: x",
+"final_nonlin": "nn.Identity",
 "weightInitializer": "InitWeights_He(1e-2)",
 "upscale_logits": false,
 "max_num_features": 256,

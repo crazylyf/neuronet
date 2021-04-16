@@ -195,11 +195,13 @@ def train():
 
     # training process
     model.train()
+
     
     t0 = time.time()
     grad_scaler = GradScaler()
     debug = True
     debug_idx = 0
+    best_loss_dice = 1.0e10
     for epoch in range(args.max_epochs):
         avg_loss_ce = 0
         avg_loss_dice = 0
@@ -262,7 +264,13 @@ def train():
         if epoch % args.test_frequency == 0:
             ddp_print('Test on val set')
             val_loss_ce, val_loss_dice = validate(model, val_loader, args.device, crit_ce, crit_dice, epoch, debug=debug, debug_idx=debug_idx)
-            ddp_print(f'[Val{epoch}] average ce loss and dice loss are {val_loss_ce:.5f}, {val_loss_dice:.5f}')   
+            ddp_print(f'[Val{epoch}] average ce loss and dice loss are {val_loss_ce:.5f}, {val_loss_dice:.5f}')
+            # save the model
+            if args.is_master and val_loss_dice < best_loss_dice:
+                best_loss_dice = val_loss_dice
+                print(f'Saving the model at epoch {epoch} with dice loss {best_loss_dice:.4f}')
+                torch.save(model, os.path.join(args.save_folder, 'best_model.pt'))
+                
 
         # save image for subsequent analysis
         if debug and args.is_master:

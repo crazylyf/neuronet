@@ -10,7 +10,7 @@
 #
 #================================================================
 
-exp_folder="exps/exp008"
+exp_folder="exps/exp009"
 mkdir -p $exp_folder
 #CUDA_VISIBLE_DEVICES=0 nohup python -u train.py --deterministic --max_epochs 50 --save_folder ${exp_folder} --amp > ${exp_folder}/fullsize_adam.log &
 
@@ -31,6 +31,8 @@ python -u -m torch.distributed.launch \
     --max_epochs 100 \
     --save_folder ${exp_folder} \
     --amp \
+    --step_per_epoch 200 \
+    --test_frequency 3 \
     --batch_size 1 \
     --data_file data/task0003_cropAll/data_split.pkl \
     > ${exp_folder}/fullsize_ddp_gtleak.log & 
