@@ -20,18 +20,21 @@ import sys
 from swc_handler import parse_swc
 from neuronet.augmentation.generic_augmentation import InstanceAugmentation
 from neuronet.datasets.swc_processing import trim_swc, swc_to_image
+from neuronet.datasets.generate_path_map import get_kernel, generate_path_map
 
 # To avoid the recursionlimit error, maybe encountered in trim_swc
 sys.setrecursionlimit(30000)
 
 class GenericDataset(tudata.Dataset):
 
-    def __init__(self, split_file, phase='train', imgshape=(256,512,512)):
+    def __init__(self, split_file, phase='train', imgshape=(256,512,512), maxv=1600.):
         self.data_list = self.load_data_list(split_file, phase)
         self.imgshape = imgshape
+        self.maxv = maxv
 
         # augmentations
         self.augment = InstanceAugmentation(p=0.2, imgshape=imgshape, phase=phase)
+        self.kernel = get_kernel(maxv=maxv, intercept=2, fn='cubic', z_space=3.0)[0]
     
     @staticmethod
     def load_data_list(split_file, phase):
@@ -58,14 +61,11 @@ class GenericDataset(tudata.Dataset):
         # convert swc to image
         # firstly trim_swc via deleting out-of-box points
         tree = trim_swc(tree, self.imgshape, True)
-        lab = swc_to_image(tree)
-        # ground truth leaking test
-        #img_mean = img.reshape(img.shape[0], -1).mean(axis=1)
-        #img_std = img.reshape(img.shape[0], -1).std(axis=1)
-        #vleak = (img_mean + 2 * img_std).reshape(img_mean.shape[0],1,1,1)
-        #img = img + vleak * lab
+        #lab = swc_to_image(tree)
+        lab = generate_path_map(tree, self.imgshape, self.maxv, self.kernel, intercept=2, fn='cubic', z_space=3.0, normalize=True)[None]
+
         
-        return torch.from_numpy(img.astype(np.float32)), torch.from_numpy(lab.astype(np.uint8)), imgfile, swcfile
+        return torch.from_numpy(img.astype(np.float32)), torch.from_numpy(lab.astype(np.float32)), imgfile, swcfile
 
 
 if __name__ == '__main__':
