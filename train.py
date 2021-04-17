@@ -70,6 +70,8 @@ parser.add_argument('--local_rank', default=-1, type=int, metavar='N',
                     help='Local process rank')  # DDP required
 parser.add_argument('--seed', default=1025, type=int,
                     help='Random seed value')
+parser.add_argument('--checkpoint', default='', type=str,
+                    help='Saved checkpoint')
 # network specific
 parser.add_argument('--net_config', default="./models/configs/default_config.json",
                     type=str,
@@ -183,12 +185,21 @@ def train():
 
     #import ipdb; ipdb.set_trace()
     model = model.to(args.device)
+    if args.checkpoint:
+        # load checkpoint
+        print(f'Loading checkpoint: {args.checkpoint}')
+        checkpoint = torch.load(args.checkpoint, map_location={'cuda:0':f'cuda:{args.local_rank}'})
+        model.load_state_dict(checkpoint.module.state_dict())
+    
     # convert to distributed data parallel model
     model = DDP(model, device_ids=[args.local_rank],
                 output_device=args.local_rank, find_unused_parameters=True)
 
     # optimizer & loss
-    #optimizer = torch.optim.SGD(model.parameters(), args.lr, weight_decay=args.weight_decay, momentum=args.momentum, nesterov=True)
+    if args.checkpoint:
+        #optimizer = torch.optim.SGD(model.parameters(), args.lr, weight_decay=args.weight_decay, momentum=args.momentum, nesterov=True)
+        args.lr /= 10.
+
     optimizer = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay, amsgrad=True)
     crit_ce = nn.CrossEntropyLoss().to(args.device)
     crit_dice = BinaryDiceLoss(smooth=1e-5).to(args.device)

@@ -60,10 +60,10 @@ class GenericDataset(tudata.Dataset):
         tree = trim_swc(tree, self.imgshape, True)
         lab = swc_to_image(tree)
         # ground truth leaking test
-        img_mean = img.reshape(img.shape[0], -1).mean(axis=1)
-        img_std = img.reshape(img.shape[0], -1).std(axis=1)
-        vleak = (img_mean + 2 * img_std).reshape(img_mean.shape[0],1,1,1)
-        img = img + vleak * lab
+        #img_mean = img.reshape(img.shape[0], -1).mean(axis=1)
+        #img_std = img.reshape(img.shape[0], -1).std(axis=1)
+        #vleak = (img_mean + 2 * img_std).reshape(img_mean.shape[0],1,1,1)
+        #img = img + vleak * lab
         
         return torch.from_numpy(img.astype(np.float32)), torch.from_numpy(lab.astype(np.uint8)), imgfile, swcfile
 
