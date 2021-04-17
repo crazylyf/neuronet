@@ -26,7 +26,7 @@ class UNet(BaseModel):
                  norm_op=nn.InstanceNorm3d, norm_op_kwargs={'eps':1e-5, 'affine':True},
                  dropout_op=nn.Dropout3d, dropout_op_kwargs={'p':0, 'inplace': True},
                  nonlin=nn.LeakyReLU, nonlin_kwargs={"negative_slope":1e-2, 'inplace':True}, deep_supervision=False, dropout_in_localization=False,
-                 final_nonlin=lambda x: x, weightInitializer=InitWeights_He(1e-2), pool_op_kernel_sizes=None,
+                 final_nonlin=nn.Identity, weightInitializer=InitWeights_He(1e-2), pool_op_kernel_sizes=None,
                  conv_kernel_sizes=None, upscale_logits=False, 
                  max_num_features=256, basic_block=ConvDropoutNormNonlin,
                  seg_output_use_bias=False, direct_supervision=True):
@@ -61,7 +61,7 @@ class UNet(BaseModel):
         self.norm_op = norm_op
         self.dropout_op = dropout_op
         self.num_classes = num_classes
-        self.final_nonlin = final_nonlin
+        self.final_nonlin = final_nonlin()
         self._deep_supervision = deep_supervision
         self.do_ds = deep_supervision
         self.direct_supervision = direct_supervision
@@ -178,7 +178,7 @@ class UNet(BaseModel):
                 self.upscale_logits_ops.append(Upsample(scale_factor=tuple([int(i) for i in cum_upsample[usl + 1]]),
                                                         mode=upsample_mode))
             else:
-                self.upscale_logits_ops.append(lambda x: x)
+                self.upscale_logits_ops.append(nn.Identity())
 
         if not dropout_in_localization:
             self.dropout_op_kwargs['p'] = old_dropout_p

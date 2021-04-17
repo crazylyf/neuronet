@@ -70,6 +70,8 @@ parser.add_argument('--local_rank', default=-1, type=int, metavar='N',
                     help='Local process rank')  # DDP required
 parser.add_argument('--seed', default=1025, type=int,
                     help='Random seed value')
+parser.add_argument('--checkpoint', default='', type=str,
+                    help='Saved checkpoint')
 # network specific
 parser.add_argument('--net_config', default="./models/configs/default_config.json",
                     type=str,
@@ -183,23 +185,34 @@ def train():
 
     #import ipdb; ipdb.set_trace()
     model = model.to(args.device)
+    if args.checkpoint:
+        # load checkpoint
+        print(f'Loading checkpoint: {args.checkpoint}')
+        checkpoint = torch.load(args.checkpoint, map_location={'cuda:0':f'cuda:{args.local_rank}'})
+        model.load_state_dict(checkpoint.module.state_dict())
+    
     # convert to distributed data parallel model
     model = DDP(model, device_ids=[args.local_rank],
                 output_device=args.local_rank, find_unused_parameters=True)
 
     # optimizer & loss
-    #optimizer = torch.optim.SGD(model.parameters(), args.lr, weight_decay=args.weight_decay, momentum=args.momentum, nesterov=True)
+    if args.checkpoint:
+        #optimizer = torch.optim.SGD(model.parameters(), args.lr, weight_decay=args.weight_decay, momentum=args.momentum, nesterov=True)
+        args.lr /= 10.
+
     optimizer = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay, amsgrad=True)
     crit_ce = nn.CrossEntropyLoss().to(args.device)
     crit_dice = BinaryDiceLoss(smooth=1e-5).to(args.device)
 
     # training process
     model.train()
+
     
     t0 = time.time()
     grad_scaler = GradScaler()
     debug = True
     debug_idx = 0
+    best_loss_dice = 1.0e10
     for epoch in range(args.max_epochs):
         avg_loss_ce = 0
         avg_loss_dice = 0
@@ -262,7 +275,13 @@ def train():
         if epoch % args.test_frequency == 0:
             ddp_print('Test on val set')
             val_loss_ce, val_loss_dice = validate(model, val_loader, args.device, crit_ce, crit_dice, epoch, debug=debug, debug_idx=debug_idx)
-            ddp_print(f'[Val{epoch}] average ce loss and dice loss are {val_loss_ce:.5f}, {val_loss_dice:.5f}')   
+            ddp_print(f'[Val{epoch}] average ce loss and dice loss are {val_loss_ce:.5f}, {val_loss_dice:.5f}')
+            # save the model
+            if args.is_master and val_loss_dice < best_loss_dice:
+                best_loss_dice = val_loss_dice
+                print(f'Saving the model at epoch {epoch} with dice loss {best_loss_dice:.4f}')
+                torch.save(model, os.path.join(args.save_folder, 'best_model.pt'))
+                
 
         # save image for subsequent analysis
         if debug and args.is_master:
