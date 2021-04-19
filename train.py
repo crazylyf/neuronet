@@ -107,7 +107,7 @@ def save_image_in_training(imgfiles, img, lab, logits, epoch, phase, idx):
         lab_v = 255 - (unnormalize_normal(lab[[idx]].numpy()[0].astype(np.float))[0]).astype(np.uint8)
         
         #logits = F.softmax(logits, dim=1).to(torch.device('cpu'))
-        log_v = 255 - (unnormalize_normal(logits[idx].numpy())[0]).astype(np.uint8)
+        log_v = 255 - (unnormalize_normal(logits[idx].cpu().numpy())[0]).astype(np.uint8)
         sitk.WriteImage(sitk.GetImageFromArray(img_v), os.path.join(args.save_folder, f'debug_epoch{epoch}_{prefix}_{phase}_img.tiff'))
         sitk.WriteImage(sitk.GetImageFromArray(lab_v), os.path.join(args.save_folder, f'debug_epoch{epoch}_{prefix}_{phase}_lab.tiff'))
         sitk.WriteImage(sitk.GetImageFromArray(log_v), os.path.join(args.save_folder, f'debug_epoch{epoch}_{prefix}_{phase}_pred.tiff'))
