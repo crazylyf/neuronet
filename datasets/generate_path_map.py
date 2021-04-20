@@ -135,6 +135,8 @@ def generate_path_map(tree, imgshape, maxv, kernel, intercept=2, fn='cubic', z_s
 
     if normalize:
         img /= maxv
+    # flip the image in y-axis
+    img = img[:,::-1]
     
     return img
 
