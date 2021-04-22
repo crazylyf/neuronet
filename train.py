@@ -104,43 +104,49 @@ def save_image_in_training(imgfiles, img, lab, logits, epoch, phase, idx):
     prefix = path_util.get_file_prefix(imgfile)
     with torch.no_grad():
         img_v = (unnormalize_normal(img[idx].numpy())[0]).astype(np.uint8)
-        lab_v = (unnormalize_normal(lab[[idx]].numpy().astype(np.float))[0]).astype(np.uint8)
+        lab_v = (unnormalize_normal(lab[idx].numpy().sum(axis=0,keepdims=True).astype(np.float))[0]).astype(np.uint8)
         
-        logits = F.softmax(logits, dim=1).to(torch.device('cpu'))
-        log_v = (unnormalize_normal(logits[idx,[1]].numpy())[0]).astype(np.uint8)
+        log_v = (F.sigmoid(logits[idx]) > 0.5).cpu().numpy().sum(axis=0,keepdims=True).astype(np.float)
+        log_v = (unnormalize_normal(log_v)[0]).astype(np.uint8)
         sitk.WriteImage(sitk.GetImageFromArray(img_v), os.path.join(args.save_folder, f'debug_epoch{epoch}_{prefix}_{phase}_img.tiff'))
         sitk.WriteImage(sitk.GetImageFromArray(lab_v), os.path.join(args.save_folder, f'debug_epoch{epoch}_{prefix}_{phase}_lab.tiff'))
         sitk.WriteImage(sitk.GetImageFromArray(log_v), os.path.join(args.save_folder, f'debug_epoch{epoch}_{prefix}_{phase}_pred.tiff'))
 
 
-def validate(model, val_loader, device, crit_ce, crit_dice, epoch, debug=True, debug_idx=0):
+def validate(model, val_loader, device, crit, epoch, debug=True, debug_idx=0):
     model.eval()
-    avg_ce_loss = 0
-    avg_dice_loss = 0
-    for img,lab,imgfiles,swcfiles in val_loader:
+    #avg_ce_loss = 0
+    #avg_dice_loss = 0
+    avg_loss = 0
+    for img,lab,mask,imgfiles,swcfiles in val_loader:
         img, lab = crop_data(img, lab)
+        mask = mask.unsqueeze(1).float()
         img_d = img.to(device)
         lab_d = lab.to(device)
+        mask_d = mask.to(device)
         
         with torch.no_grad():
             logits = model(img_d)
             del img_d
-            loss_ce = crit_ce(logits, lab_d.long())
-            loss_dice = crit_dice(logits, lab_d)
-            loss = loss_ce + loss_dice
+            #loss_ce = crit_ce(logits, lab_d.long())
+            #loss_dice = crit_dice(logits, lab_d)
+            #loss = loss_ce + loss_dice
+            loss = crit(logits * mask_d, lab_d * mask_d)
 
-        avg_ce_loss += loss_ce
-        avg_dice_loss += loss_dice
+        #avg_ce_loss += loss_ce
+        #avg_dice_loss += loss_dice
+        avg_loss += loss.item()
 
-    avg_ce_loss /= len(val_loader)
-    avg_dice_loss /= len(val_loader)
+    #avg_ce_loss /= len(val_loader)
+    #avg_dice_loss /= len(val_loader)
+    avg_loss /= len(val_loader)
     
     if debug and args.is_master:
         save_image_in_training(imgfiles, img, lab, logits, epoch, 'val', debug_idx)
 
     model.train()
 
-    return avg_ce_loss, avg_dice_loss
+    return avg_loss
 
 def train():
 
@@ -178,7 +184,7 @@ def train():
     # network initialization
     with open(args.net_config) as fp:
         net_configs = json.load(fp)
-        model = unet.UNet(**net_configs)
+        model = unet.UNetWithPreLayer(net_configs)
         ddp_print('\n' + '='*10 + 'Network Structure' + '='*10)
         ddp_print(model)
         ddp_print('='*30 + '\n')
@@ -201,8 +207,9 @@ def train():
         args.lr /= 10.
 
     optimizer = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay, amsgrad=True)
-    crit_ce = nn.CrossEntropyLoss().to(args.device)
-    crit_dice = BinaryDiceLoss(smooth=1e-5).to(args.device)
+    #crit_ce = nn.CrossEntropyLoss().to(args.device)
+    #crit_dice = BinaryDiceLoss(smooth=1e-5).to(args.device)
+    crit = nn.BCEWithLogitsLoss().to(args.device)
 
     # training process
     model.train()
@@ -212,13 +219,14 @@ def train():
     grad_scaler = GradScaler()
     debug = True
     debug_idx = 0
-    best_loss_dice = 1.0e10
+    best_loss = 1.0e10
     for epoch in range(args.max_epochs):
-        avg_loss_ce = 0
-        avg_loss_dice = 0
+        #avg_loss_ce = 0
+        #avg_loss_dice = 0
+        avg_loss = 0
         for it in range(args.step_per_epoch):
             try:
-                img, lab, imgfiles, swcfiles = next(train_iter)
+                img, lab, mask, imgfiles, swcfiles = next(train_iter)
             except StopIteration:
                 # let all processes sync up before starting with a new epoch of training
                 distrib.barrier()
@@ -226,23 +234,25 @@ def train():
                 np.random.seed(args.seed + epoch)
                 
                 train_iter = iter(train_loader)
-                img, lab, imgfiles, swcfiles = next(train_iter)
+                img, lab, mask, imgfiles, swcfiles = next(train_iter)
 
             # center croping for debug, 64x128x128 patch
             img, lab = crop_data(img, lab)
-            
+            mask = mask.unsqueeze(1).float()
 
             img_d = img.to(args.device)
             lab_d = lab.to(args.device)
+            mask_d = mask.to(args.device)
             
             optimizer.zero_grad()
             if args.amp:
                 with autocast():
                     logits = model(img_d)
                     del img_d
-                    loss_ce = crit_ce(logits, lab_d.long())
-                    loss_dice = crit_dice(logits, lab_d)
-                    loss = loss_ce + loss_dice
+                    #loss_ce = crit_ce(logits, lab_d.long())
+                    #loss_dice = crit_dice(logits, lab_d)
+                    #loss = loss_ce + loss_dice
+                    loss = crit(logits * mask_d, lab_d * mask_d)
                 grad_scaler.scale(loss).backward()
                 grad_scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm(model.parameters(), 12)
@@ -251,9 +261,10 @@ def train():
             else:
                 logits = model(img_d)
                 del img_d
-                loss_ce = crit_ce(logits, lab_d.long())
-                loss_dice = crit_dice(logits, lab_d)
-                loss = loss_ce + loss_dice
+                #loss_ce = crit_ce(logits, lab_d.long())
+                #loss_dice = crit_dice(logits, lab_d)
+                #loss = loss_ce + loss_dice
+                loss = crit(logits * mask_d, lab_d * mask_d)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm(model.parameters(), 12)
                 optimizer.step()
@@ -262,24 +273,26 @@ def train():
             #print(logits.shape, lab.shape, lab.max(), lab.min())
             
             
-            avg_loss_ce += loss_ce.item()
-            avg_loss_dice += loss_dice.item()
+            #avg_loss_ce += loss_ce.item()
+            #avg_loss_dice += loss_dice.item()
+            avg_loss += loss.item()
 
             if it % 2 == 0:
-                ddp_print(f'[{epoch}/{it}] loss_ce={loss_ce:.5f}, loss_dice={loss_dice:.5f}, time: {time.time() - t0:.4f}s')
+                ddp_print(f'[{epoch}/{it}] loss={loss:.5f}, time: {time.time() - t0:.4f}s')
 
-        avg_loss_ce /= args.step_per_epoch
-        avg_loss_dice /= args.step_per_epoch
+        #avg_loss_ce /= args.step_per_epoch
+        #avg_loss_dice /= args.step_per_epoch
+        avg_loss /= args.step_per_epoch
 
         # do validation
-        if epoch % args.test_frequency == 0:
+        if epoch % args.test_frequency == 0 and epoch != 0:
             ddp_print('Test on val set')
-            val_loss_ce, val_loss_dice = validate(model, val_loader, args.device, crit_ce, crit_dice, epoch, debug=debug, debug_idx=debug_idx)
-            ddp_print(f'[Val{epoch}] average ce loss and dice loss are {val_loss_ce:.5f}, {val_loss_dice:.5f}')
+            val_loss = validate(model, val_loader, args.device, crit, epoch, debug=debug, debug_idx=debug_idx)
+            ddp_print(f'[Val{epoch}] average loss are {val_loss:.5f}')
             # save the model
-            if args.is_master and val_loss_dice < best_loss_dice:
-                best_loss_dice = val_loss_dice
-                print(f'Saving the model at epoch {epoch} with dice loss {best_loss_dice:.4f}')
+            if args.is_master and val_loss < best_loss:
+                best_loss = val_loss
+                print(f'Saving the model at epoch {epoch} with loss {best_loss:.4f}')
                 torch.save(model, os.path.join(args.save_folder, 'best_model.pt'))
                 
 

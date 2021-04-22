@@ -10,7 +10,7 @@
 #
 #================================================================
 
-exp_folder="exps/exp010"
+exp_folder="exps/exp012"
 mkdir -p $exp_folder
 #CUDA_VISIBLE_DEVICES=0 nohup python -u train.py --deterministic --max_epochs 50 --save_folder ${exp_folder} --amp > ${exp_folder}/fullsize_adam.log &
 
@@ -21,7 +21,7 @@ export NODE_RANK=0
 export WORLD_SIZE=$((NUM_NODES * $NUM_GPUS_PER_NODE))
 
 # launch our script w/ `torch.distributed.launch`
-CUDA_VISIBLE_DEVICES=0,1 nohup \
+#CUDA_VISIBLE_DEVICES=0,1 nohup \
 python -u -m torch.distributed.launch \
     --nproc_per_node=$NUM_GPUS_PER_NODE \
     --nnodes=$NUM_NODES \
@@ -34,7 +34,7 @@ python -u -m torch.distributed.launch \
     --step_per_epoch 200 \
     --test_frequency 3 \
     --batch_size 1 \
-    --checkpoint ./exps/exp009/best_model.pt \
-    --data_file data/task0003_cropAll/data_split.pkl \
-    > ${exp_folder}/fullsize_ddp_gtleak.log & 
+    --image_shape 256,384,384 \
+    --data_file data/task0003_cropAll/data_split.pkl #\
+    #> ${exp_folder}/fullsize_ddp_gtleak.log & 
 

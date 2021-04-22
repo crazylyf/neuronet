@@ -140,7 +140,7 @@ def load_spacing(spacing_file, zyx_order=True):
     
     return spacing_dict
 
-def swc_to_image(tree, r_exp=3, z_ratio=0.4, imgshape=(256,512,512), flipy=True):
+def swc_to_image(tree, r_exp=3, z_ratio=0.4, imgshape=(256,512,512), flipy=True, label_soma=True):
     # Note imgshape in (z,y,x) order
     # initialize empty image
     img = np.zeros(shape=imgshape, dtype=np.uint8)
@@ -180,20 +180,138 @@ def swc_to_image(tree, r_exp=3, z_ratio=0.4, imgshape=(256,512,512), flipy=True)
     img[zn,yn,xn] = 1
 
     # do morphology expansion
-    r_z = int(round(z_ratio * r_exp))
+    r_z = max(int(round(z_ratio * r_exp)), 1)
     selem = np.ones((r_z, r_exp, r_exp), dtype=np.uint8)
     img = morphology.dilation(img, selem)
     # soma-labelling
-    lab_img = soma_labelling(img, r=r_exp*2+1, thresh=220, label=1)
+    if label_soma:
+        lab_img = soma_labelling(img, r=r_exp*2+1, thresh=220, label=1)
+    else:
+        lab_img = img
+    
     if flipy:
         lab_img = lab_img[:,::-1]   # flip in y-axis, as the image is flipped
 
     return lab_img
+
+def swc_to_fullconnect(tree):
+    # get the position tree and parent tree
+    pos_dict = {}
+    for i, leaf in enumerate(tree):
+        idx, type_, x, y, z, r, p = leaf
+        # manually convert to integar, in case of rounding problems
+        x = int(round(x))
+        y = int(round(y))
+        z = int(round(z))
+        pos_dict[leaf[0]] = (idx, type_, x, y, z, r, p)
+     
+    fc_dict = {}
+    fc_indices = {}
+    xl, yl, zl = [], [], []
+    for _, leaf in pos_dict.items():
+        idx, type_, x, y, z, r, p = leaf
+
+        # soma
+        if idx == 1: 
+            key = (int(round(x)), int(round(y)), int(round(z)))
+            if key not in fc_indices:
+                iid = len(fc_indices)
+                fc_indices[key] = iid
+                fc_dict[iid] = (iid, type_, x, y, z, r, p)
+            continue
+        
+        parent_leaf = pos_dict[p]
+        # draw line connect each pair
+        cur_pos = leaf[2:5]
+        par_pos = parent_leaf[2:5]
+        lin = line_nd(par_pos[::-1], cur_pos[::-1], endpoint=True)
+        for pos in zip(lin[2],lin[1],lin[0]):
+            if pos not in fc_indices:
+                iid = len(fc_indices)
+                fc_indices[pos] = iid
+        for i in range(1, len(lin[0])):
+            pos = lin[2][i], lin[1][i], lin[0][i]
+            pos_pre = lin[2][i-1], lin[1][i-1], lin[0][i-1]
+            iid = fc_indices[pos]
+            iid_pre = fc_indices[pos_pre]
+            type_ = leaf[1]
+            r = leaf[5]
+            fc_dict[iid] = (iid,type_,pos[0],pos[1],pos[2],r,iid_pre)
+    assert(len(fc_dict) == len(fc_indices))
+        
+    return fc_dict, fc_indices
+
+def swc_to_connection(tree, r_xy=3, r_z=1, imgshape=(256,512,512), flipy=True):
+    zshape, yshape, xshape = imgshape
+    assert zshape % r_z == 0
+    assert yshape % r_xy == 0
+    assert xshape % r_xy == 0
+    zn, yn, xn = zshape//r_z, yshape//r_xy, xshape//r_xy
+
+    fc_dict, fc_indices = swc_to_fullconnect(tree)
+    #print(f'FC size: {len(fc_dict)}, {len(fc_indices)}')
+    # initialize connection label
+    lab = np.zeros((26,zn,yn,xn), dtype=np.int)
+    mask = np.zeros((zn,yn,xn), dtype=np.bool)
+    for iid, leaf in fc_dict.items():
+        _, type_, xi, yi, zi, r, p_iid = leaf
+        xx = xi // r_xy
+        yy = yi // r_xy
+        zz = zi // r_z
+        if not is_in_box(xi,yi,zi,imgshape):
+            continue
+        mask[zz,yy,xx] = True
+        if p_iid != -1:
+            xxi, yyi, zzi = fc_dict[p_iid][2:5]
+            xxp, yyp, zzp = xxi//r_xy, yyi//r_xy, zzi//r_z
+            if not is_in_box(xxi,yyi,zzi,imgshape):
+                continue
+            
+            class_id = 9 * (xxp - xx + 1) + 3 * (yyp - yy + 1) + (zzp - zz + 1) - 1
+            if class_id == -1:
+                continue
+            else:
+                lab[class_id,zz,yy,xx] = 1
+                lab[25-class_id,zzp,yyp,xxp] = 1
+    #mask = lab.sum(axis=0) > 0
+    if flipy:
+        mask = mask[:,::-1]
+        lab = lab[:,:,::-1]
+
+    return mask, lab
+
+def check_connectivity(mask):
+    indices = np.nonzero(mask)
+    for zz,yy,xx in zip(*indices):
+        zs = max(0, zz-1)
+        ze = min(mask.shape[0]-1, zz+1)
+        ys = max(0, yy-1)
+        ye = min(mask.shape[1]-1, yy+1)
+        xs = max(0, xx-1)
+        xe = min(mask.shape[2]-1, xx+1)
+        neighbouring = mask[zs:ze+1, ys:ye+1, xs:xe+1]
+        if neighbouring.sum() < 0:
+            return False
+    return True
+    
     
 if __name__ == '__main__':
+    import time
+
     prefix = '8315_19523_2299'
     swc_file = f'/home/lyf/Research/auto_trace/neuronet/data/task0001_17302/{prefix}.swc'
+    imgshape = (256,384,384)
+    
+    t0 = time.time()    
     tree = parse_swc(swc_file)
-    lab_img = swc_to_image(tree, 3, 0.4, (256,512,512))
-    sitk.WriteImage(sitk.GetImageFromArray(lab_img), f'{prefix}_label.tiff')
+    print(f'Parsing: {time.time() - t0:.4f}s')
+    tree = trim_swc(tree, imgshape)
+    print(f'Trim: {time.time() - t0:.4f}s')
+    mask, lab = swc_to_connection(tree, r_xy=3, r_z=1, imgshape=imgshape, flipy=True)
+    valid = check_connectivity(mask)
+    print(f'Validicity: {valid}')
+    print(f'Labelling: {time.time() - t0:.4f}s')
+    import ipdb; ipdb.set_trace()
+    sitk.WriteImage(sitk.GetImageFromArray(lab.max(axis=0).astype(np.uint8)), f'{prefix}_label.tiff')
+    sitk.WriteImage(sitk.GetImageFromArray(mask.astype(np.uint8)), f'{prefix}_mask.tiff')
 

@@ -9,6 +9,7 @@
 #   Description  : 
 #
 #================================================================
+import copy
 import numpy as np
 import torch
 import torch.nn as nn
@@ -224,6 +225,40 @@ class UNet(BaseModel):
         else:
             return seg_outputs[-1]
 
+class UNetWithPreLayer(BaseModel):
+    def __init__(self, configs):
+        super(UNetWithPreLayer, self).__init__()
+        # the first layer
+        conv_kwargs = {'kernel_size': 3, 'stride': 1, 'padding': 1, 'dilation': 1, 'bias': True}
+        
+        conv1_kwargs = copy.deepcopy(conv_kwargs)
+        conv1_kwargs['kernel_size'] = (3,5,5)
+        conv1_kwargs['padding'] = (1,2,2)
+        conv1_kwargs['stride'] = (1,3,3)
+        conv2_kwargs = copy.deepcopy(conv_kwargs)
+        norm_op = nn.InstanceNorm3d
+        norm_op_kwargs = {'eps': 1e-5, 'affine': True, 'momentum': 0.1}
+        nonlin_kwargs = {'negative_slope': 1e-2, 'inplace': True}
+        dropout_op = nn.Dropout3d
+        dropout_op_kwargs = {'p': 0.5, 'inplace': True}
+        bnf = configs['base_num_features']
+        self.pre_layer = nn.Sequential(
+            ConvDropoutNormNonlin(1, bnf, 
+                    nn.Conv3d, conv1_kwargs, 
+                    norm_op, norm_op_kwargs, 
+                    dropout_op, dropout_op_kwargs,
+                    nn.LeakyReLU, nonlin_kwargs),
+            ConvDropoutNormNonlin(bnf, bnf, 
+                    nn.Conv3d, conv2_kwargs, 
+                    norm_op, norm_op_kwargs, 
+                    dropout_op, dropout_op_kwargs,
+                    nn.LeakyReLU, nonlin_kwargs))
+        self.main_block = UNet(**configs)
+
+    def forward(self, x):
+        x = self.pre_layer(x)
+        x = self.main_block(x)
+        return x
 
 if __name__ == '__main__':
     import json
@@ -233,10 +268,10 @@ if __name__ == '__main__':
     with open(conf_file) as fp:
         configs = json.load(fp)
 
-    network = UNet(
-        **configs
+    network = UNetWithPreLayer(
+        configs
     )
     print(network)
 
-    summary(network, input_size=(2,1,256,512,512))  
+    summary(network, input_size=(2,1,256,384,384))  
 
