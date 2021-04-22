@@ -120,6 +120,7 @@ def validate(model, val_loader, device, crit, epoch, debug=True, debug_idx=0):
     avg_loss = 0
     for img,lab,mask,imgfiles,swcfiles in val_loader:
         img, lab = crop_data(img, lab)
+        lab = lab.float()
         mask = mask.unsqueeze(1).float()
         img_d = img.to(device)
         lab_d = lab.to(device)
@@ -213,7 +214,6 @@ def train():
 
     # training process
     model.train()
-
     
     t0 = time.time()
     grad_scaler = GradScaler()
@@ -238,6 +238,7 @@ def train():
 
             # center croping for debug, 64x128x128 patch
             img, lab = crop_data(img, lab)
+            lab = lab.float()
             mask = mask.unsqueeze(1).float()
 
             img_d = img.to(args.device)
@@ -253,6 +254,8 @@ def train():
                     #loss_dice = crit_dice(logits, lab_d)
                     #loss = loss_ce + loss_dice
                     loss = crit(logits * mask_d, lab_d * mask_d)
+                    ddp_print(f'Logits: {logits.mean().item()}, {logits.max().item()}, {logits.min().item()}')
+                    ddp_print(f'Lab: {lab_d.mean().item()}, {lab_d.min().item()}, {lab_d.min().item()}')
                 grad_scaler.scale(loss).backward()
                 grad_scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm(model.parameters(), 12)
