@@ -113,7 +113,7 @@ def save_image_in_training(imgfiles, img, lab, logits, epoch, phase, idx):
         sitk.WriteImage(sitk.GetImageFromArray(log_v), os.path.join(args.save_folder, f'debug_epoch{epoch}_{prefix}_{phase}_pred.tiff'))
 
 
-def validate(model, val_loader, device, crit, epoch, debug=True, debug_idx=0):
+def validate(model, val_loader, device, crit, crit_ce, crit_dice, epoch, debug=True, debug_idx=0):
     model.eval()
     #avg_ce_loss = 0
     #avg_dice_loss = 0
@@ -222,6 +222,7 @@ def train():
         avg_loss_ce = 0
         avg_loss_dice = 0
         avg_loss_bce = 0
+        avg_loss = 0
         for it in range(args.step_per_epoch):
             try:
                 img, lab, mask, imgfiles, swcfiles = next(train_iter)
@@ -238,7 +239,6 @@ def train():
             img, lab = crop_data(img, lab)
             #mask = mask.unsqueeze(1)#.float()
 
-            print(img.shape, lab.shape, mask.shape)
             img_d = img.to(args.device)
             lab_d = lab.to(args.device)
             mask_d = mask.to(args.device)
@@ -248,8 +248,8 @@ def train():
                 with autocast():
                     logits = model(img_d)
                     del img_d
-                    loss_ce = crit_ce(logits[:,0], mask_d.long())
-                    loss_dice = crit_dice(logits, mask_d.float())
+                    loss_ce = crit_ce(logits[:,:2], mask_d.long())
+                    loss_dice = crit_dice(logits[:2], mask_d.float())
                     loss = loss_ce + loss_dice
                     #mask_logits = logits# * mask_d
                     #mask_lab = lab_d# * mask_d
@@ -264,8 +264,8 @@ def train():
             else:
                 logits = model(img_d)
                 del img_d
-                loss_ce = crit_ce(logits[:,0], mask_d.long())
-                loss_dice = crit_dice(logits, mask_d.float())
+                loss_ce = crit_ce(logits[:,:2], mask_d.long())
+                loss_dice = crit_dice(logits[:2], mask_d.float())
                 loss = loss_ce + loss_dice
                 #loss = crit(logits * mask_d, lab_d * mask_d)
                 loss.backward()
@@ -273,7 +273,6 @@ def train():
                 optimizer.step()
 
             ddp_print(f'Temp: {logits[:,0].min().item(), logits[:,0].max().item(), logits[:,1].min().item(), logits[:,1].max().item()}')
-            #print(logits.shape, lab.shape, lab.max(), lab.min())
             
             if False and args.is_master:
                 print(f'Grad [{epoch}/{it}] ', )
@@ -295,7 +294,7 @@ def train():
         # do validation
         if epoch % args.test_frequency == 0 and epoch != 0:
             ddp_print('Test on val set')
-            val_loss = validate(model, val_loader, args.device, crit, epoch, debug=debug, debug_idx=debug_idx)
+            val_loss = validate(model, val_loader, args.device, crit, crit_ce, crit_dice, epoch, debug=debug, debug_idx=debug_idx)
             ddp_print(f'[Val{epoch}] average loss are {val_loss:.5f}')
             # save the model
             if args.is_master and val_loss < best_loss:

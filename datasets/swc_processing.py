@@ -153,6 +153,7 @@ def trim_out_of_box(tree_orig, imgshape, keep_candidate_points=True):
                 for ch_leaf in child_dict[idx]:
                     if is_in_box(*pos_dict[ch_leaf][2:5], imgshape):
                         tree.append(leaf)
+                        break
     return tree
 
 def load_spacing(spacing_file, zyx_order=True):
@@ -243,12 +244,15 @@ def swc_to_fullconnect(tree):
         idx, type_, x, y, z, r, p = leaf
 
         # soma
-        if p <= 0: 
+        if p == -1: 
             key = (int(round(x)), int(round(y)), int(round(z)))
             if key not in fc_indices:
                 iid = len(fc_indices)
                 fc_indices[key] = iid
                 fc_dict[iid] = (iid, type_, x, y, z, r, p)
+            continue
+        elif p not in pos_dict:
+            # points who is out-of-box and its parent is trimmed
             continue
         
         parent_leaf = pos_dict[p]
@@ -295,7 +299,7 @@ def swc_to_connection(tree, r_xy=3, r_z=1, imgshape=(256,512,512), flipy=True):
         if not is_in_box(xi,yi,zi,imgshape):
             continue
         mask[zz,yy,xx] = True
-        if p_iid != -1 and p_iid != -2:
+        if p_iid > 0:
             xxi, yyi, zzi = fc_dict[p_iid][2:5]
             xxp, yyp, zzp = xxi//r_xy, yyi//r_xy, zzi//r_z
             if not is_in_box(xxi,yyi,zzi,imgshape):
@@ -332,20 +336,21 @@ def check_connectivity(mask):
 if __name__ == '__main__':
     import time
 
-    prefix = '8315_19523_2299'
-    swc_file = f'/home/lyf/Research/auto_trace/neuronet/data/task0001_17302/{prefix}.swc'
+    prefix = '15342_3352_2363'
+    swc_file = f'/home/lyf/Research/auto_trace/neuronet/data/task0003_cropAll/{prefix}.swc'
     imgshape = (256,384,384)
     
     t0 = time.time()    
     tree = parse_swc(swc_file)
     print(f'Parsing: {time.time() - t0:.4f}s')
-    tree = trim_swc(tree, imgshape)
+    #tree = trim_swc(tree, imgshape)
+    tree = trim_out_of_box(tree, imgshape, True)
     print(f'Trim: {time.time() - t0:.4f}s')
     mask, lab = swc_to_connection(tree, r_xy=3, r_z=1, imgshape=imgshape, flipy=True)
     valid = check_connectivity(mask)
     print(f'Validicity: {valid}')
     print(f'Labelling: {time.time() - t0:.4f}s')
-    import ipdb; ipdb.set_trace()
+    
     sitk.WriteImage(sitk.GetImageFromArray(lab.max(axis=0).astype(np.uint8)), f'{prefix}_label.tiff')
     sitk.WriteImage(sitk.GetImageFromArray(mask.astype(np.uint8)), f'{prefix}_mask.tiff')
 
