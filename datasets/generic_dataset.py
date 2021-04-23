@@ -60,7 +60,7 @@ class GenericDataset(tudata.Dataset):
         # firstly trim_swc via deleting out-of-box points
         tree = trim_out_of_box(tree, self.imgshape, True)
         mask, lab = swc_to_connection(tree, 3, 1, self.imgshape, flipy=True)
-        if label_soma:
+        if self.label_soma:
             mask = soma_labelling(mask, z_ratio=0.3, r=3, thresh=220, label=1)
 
         #print('Image: ', img.mean(), img.min(), img.max(), img.shape)
