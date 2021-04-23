@@ -63,5 +63,27 @@ def logits_to_seg(logits, thresh=None):
             seg[~mask] = 0
     return seg
 
+def get_grad_stats(model):
+    stats = []
+    for p in list(filter(lambda p: p.grad is not None, model.parameters())):
+        grad_data = p.grad.data
+        norm = grad_data.norm(2).item()
+        gmin = grad_data.min().item()
+        gmax = grad_data.max().item()
+        gmean = grad_data.mean().item()
+        stats.append((norm, gmin, gmax, gmean))
+    return stats
+
+def get_param_stats(model):
+    stats = []
+    for p in list(filter(lambda p: p.grad is not None, model.parameters())):
+        param_data = p.data
+        norm = param_data.norm(2).item()
+        gmin = param_data.min().item()
+        gmax = param_data.max().item()
+        gmean = param_data.mean().item()
+        stats.append((norm, gmin, gmax, gmean))
+    return stats
+
 
 # TODO: network ploting

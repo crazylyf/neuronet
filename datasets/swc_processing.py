@@ -124,6 +124,37 @@ def trim_swc(tree_orig, imgshape, keep_candidate_points=True):
 
     return tree_trim
 
+def trim_out_of_box(tree_orig, imgshape, keep_candidate_points=True):
+    """
+    Trim the out-of-box leaves
+    """
+    # execute trimming
+    child_dict = {}
+    for leaf in tree:
+        if leaf[-1] in child_dict:
+            child_dict[leaf[-1]].append(leaf[0])
+        else:
+            child_dict[leaf[-1]] = [leaf[0]]
+    
+    pos_dict = {}
+    for i, leaf in enumerate(tree_orig):
+        pos_dict[leaf[0]] = leaf
+
+    tree = []
+    for i, leaf in enumerate(tree_orig):
+        idx, type_, x, y, z, r, p = leaf
+        ib = is_in_box(x,y,z,imgshape)
+        if ib:
+            tree.append(leaf)
+        elif keep_candidate_points:
+            if p in pos_dict and is_in_box(pos_dict[p][2:5], imgshape):
+                tree.append(leaf)
+            elif idx in child_dict:
+                for ch_leaf in child_dict[idx]:
+                    if is_in_box(ch_leaf[2:5], imgshape):
+                        tree.append(leaf)
+    return tree
+
 def load_spacing(spacing_file, zyx_order=True):
     spacing_dict = {}
     with open(spacing_file) as fp:
@@ -140,7 +171,7 @@ def load_spacing(spacing_file, zyx_order=True):
     
     return spacing_dict
 
-def swc_to_image(tree, r_exp=3, z_ratio=0.4, imgshape=(256,512,512), flipy=True, label_soma=True):
+def swc_to_image(tree, r_exp=3, z_ratio=0.4, imgshape=(256,512,512), flipy=True, label_soma=False):
     # Note imgshape in (z,y,x) order
     # initialize empty image
     img = np.zeros(shape=imgshape, dtype=np.uint8)
@@ -155,7 +186,7 @@ def swc_to_image(tree, r_exp=3, z_ratio=0.4, imgshape=(256,512,512), flipy=True,
     xl, yl, zl = [], [], []
     for _, leaf in pos_dict.items():
         idx, type_, x, y, z, r, p, ib = leaf
-        if idx == 1: continue   # soma
+        if p < 1: continue   # soma
         
         parent_leaf = pos_dict[p]
         if (not ib) and (not parent_leaf[ib]):
@@ -237,6 +268,9 @@ def swc_to_fullconnect(tree):
             type_ = leaf[1]
             r = leaf[5]
             fc_dict[iid] = (iid,type_,pos[0],pos[1],pos[2],r,iid_pre)
+            if iid_pre not in fc_dict:
+                fc_dict[iid_pre] = (iid_pre,type_,pos_pre[0],pos_pre[1],pos_pre[2],r,-2)
+
     assert(len(fc_dict) == len(fc_indices))
         
     return fc_dict, fc_indices
@@ -252,7 +286,7 @@ def swc_to_connection(tree, r_xy=3, r_z=1, imgshape=(256,512,512), flipy=True):
     #print(f'FC size: {len(fc_dict)}, {len(fc_indices)}')
     # initialize connection label
     lab = np.zeros((26,zn,yn,xn), dtype=np.int)
-    mask = np.zeros((zn,yn,xn), dtype=np.bool)
+    mask = np.zeros((zn,yn,xn), dtype=np.float32)
     for iid, leaf in fc_dict.items():
         _, type_, xi, yi, zi, r, p_iid = leaf
         xx = xi // r_xy
@@ -260,8 +294,8 @@ def swc_to_connection(tree, r_xy=3, r_z=1, imgshape=(256,512,512), flipy=True):
         zz = zi // r_z
         if not is_in_box(xi,yi,zi,imgshape):
             continue
-        mask[zz,yy,xx] = True
-        if p_iid != -1:
+        mask[zz,yy,xx] = 1
+        if p_iid != -1 and p_iid != -2:
             xxi, yyi, zzi = fc_dict[p_iid][2:5]
             xxp, yyp, zzp = xxi//r_xy, yyi//r_xy, zzi//r_z
             if not is_in_box(xxi,yyi,zzi,imgshape):

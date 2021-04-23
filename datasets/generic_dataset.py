@@ -57,10 +57,13 @@ class GenericDataset(tudata.Dataset):
         img, tree, _ = self.augment(img, tree, spacing)
         # convert swc to image
         # firstly trim_swc via deleting out-of-box points
-        tree = trim_swc(tree, self.imgshape, True)
-        mask, lab = swc_to_connection(tree, 3, 1, self.imgshape, True)
+        tree = trim_out_of_box(tree, self.imgshape, True)
+        mask, lab = swc_to_connection(tree, 3, 1, self.imgshape, flipy=True)
+        #print('Image: ', img.mean(), img.min(), img.max(), img.shape)
+        #print('Mask: ', mask.mean(), mask.min(), mask.max(), mask.shape)
+        #print('Lab: ', lab.mean(), lab.min(), lab.max(), lab.shape)
         
-        return torch.from_numpy(img.astype(np.float32)), torch.from_numpy(lab.astype(np.uint8)), torch.from_numpy(mask.astype(np.bool)), imgfile, swcfile
+        return torch.from_numpy(img.astype(np.float32)), torch.from_numpy(lab.astype(np.float32)), torch.from_numpy(mask.astype(np.float32)), imgfile, swcfile
 
 
 if __name__ == '__main__':

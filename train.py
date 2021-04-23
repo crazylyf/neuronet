@@ -120,8 +120,7 @@ def validate(model, val_loader, device, crit, epoch, debug=True, debug_idx=0):
     avg_loss = 0
     for img,lab,mask,imgfiles,swcfiles in val_loader:
         img, lab = crop_data(img, lab)
-        lab = lab.float()
-        mask = mask.unsqueeze(1).float()
+        mask = mask.unsqueeze(1)#.float()
         img_d = img.to(device)
         lab_d = lab.to(device)
         mask_d = mask.to(device)
@@ -129,10 +128,8 @@ def validate(model, val_loader, device, crit, epoch, debug=True, debug_idx=0):
         with torch.no_grad():
             logits = model(img_d)
             del img_d
-            #loss_ce = crit_ce(logits, lab_d.long())
-            #loss_dice = crit_dice(logits, lab_d)
-            #loss = loss_ce + loss_dice
-            loss = crit(logits * mask_d, lab_d * mask_d)
+            #loss = crit(logits * mask_d, lab_d * mask_d)
+            loss = crit(logits, lab_d)
 
         #avg_ce_loss += loss_ce
         #avg_dice_loss += loss_dice
@@ -238,8 +235,7 @@ def train():
 
             # center croping for debug, 64x128x128 patch
             img, lab = crop_data(img, lab)
-            lab = lab.float()
-            mask = mask.unsqueeze(1).float()
+            mask = mask.unsqueeze(1)#.float()
 
             img_d = img.to(args.device)
             lab_d = lab.to(args.device)
@@ -253,9 +249,11 @@ def train():
                     #loss_ce = crit_ce(logits, lab_d.long())
                     #loss_dice = crit_dice(logits, lab_d)
                     #loss = loss_ce + loss_dice
-                    loss = crit(logits * mask_d, lab_d * mask_d)
-                    ddp_print(f'Logits: {logits.mean().item()}, {logits.max().item()}, {logits.min().item()}')
-                    ddp_print(f'Lab: {lab_d.mean().item()}, {lab_d.min().item()}, {lab_d.min().item()}')
+                    mask_logits = logits# * mask_d
+                    mask_lab = lab_d# * mask_d
+                    loss = crit(mask_logits, mask_lab)
+                    ddp_print(f'Logits: {mask_logits.mean().item()}, {mask_logits.max().item()}, {mask_logits.min().item()}')
+                    ddp_print(f'Lab: {mask_lab.mean().item()}, {mask_lab.max().item()}, {mask_lab.min().item()}')
                 grad_scaler.scale(loss).backward()
                 grad_scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm(model.parameters(), 12)
@@ -275,13 +273,18 @@ def train():
             ddp_print(f'Temp: {logits[:,0].min().item(), logits[:,0].max().item(), logits[:,1].min().item(), logits[:,1].max().item()}')
             #print(logits.shape, lab.shape, lab.max(), lab.min())
             
+            if False and args.is_master:
+                print(f'Grad [{epoch}/{it}] ', )
+                grad_stats = util.get_param_stats(model)
+                for istat, stat in enumerate(grad_stats):
+                    print(istat, *stat)
             
             #avg_loss_ce += loss_ce.item()
             #avg_loss_dice += loss_dice.item()
             avg_loss += loss.item()
 
             if it % 2 == 0:
-                ddp_print(f'[{epoch}/{it}] loss={loss:.5f}, time: {time.time() - t0:.4f}s')
+                ddp_print(f'[{epoch}/{it}] loss={loss.item():.5f}, time: {time.time() - t0:.4f}s')
 
         #avg_loss_ce /= args.step_per_epoch
         #avg_loss_dice /= args.step_per_epoch
