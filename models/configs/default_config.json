@@ -1,7 +1,7 @@
 {
 "input_channels": 8, 
 "base_num_features": 8, 
-"num_classes": 26,
+"num_classes": 27,
 "pool_op_kernel_sizes": [[2,2,2], [2,2,2], [2,2,2], [2,2,2], [2,2,2]],
 "conv_kernel_sizes": [[3,3,3], [3,3,3], [3,3,3], [3,3,3], [3,3,3]],
 

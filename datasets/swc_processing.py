@@ -130,7 +130,7 @@ def trim_out_of_box(tree_orig, imgshape, keep_candidate_points=True):
     """
     # execute trimming
     child_dict = {}
-    for leaf in tree:
+    for leaf in tree_orig:
         if leaf[-1] in child_dict:
             child_dict[leaf[-1]].append(leaf[0])
         else:
@@ -147,11 +147,11 @@ def trim_out_of_box(tree_orig, imgshape, keep_candidate_points=True):
         if ib:
             tree.append(leaf)
         elif keep_candidate_points:
-            if p in pos_dict and is_in_box(pos_dict[p][2:5], imgshape):
+            if p in pos_dict and is_in_box(*pos_dict[p][2:5], imgshape):
                 tree.append(leaf)
             elif idx in child_dict:
                 for ch_leaf in child_dict[idx]:
-                    if is_in_box(ch_leaf[2:5], imgshape):
+                    if is_in_box(*pos_dict[ch_leaf][2:5], imgshape):
                         tree.append(leaf)
     return tree
 
@@ -243,7 +243,7 @@ def swc_to_fullconnect(tree):
         idx, type_, x, y, z, r, p = leaf
 
         # soma
-        if idx == 1: 
+        if p <= 0: 
             key = (int(round(x)), int(round(y)), int(round(z)))
             if key not in fc_indices:
                 iid = len(fc_indices)
@@ -285,8 +285,8 @@ def swc_to_connection(tree, r_xy=3, r_z=1, imgshape=(256,512,512), flipy=True):
     fc_dict, fc_indices = swc_to_fullconnect(tree)
     #print(f'FC size: {len(fc_dict)}, {len(fc_indices)}')
     # initialize connection label
-    lab = np.zeros((26,zn,yn,xn), dtype=np.int)
-    mask = np.zeros((zn,yn,xn), dtype=np.float32)
+    lab = np.zeros((26,zn,yn,xn), dtype=np.uint8)
+    mask = np.zeros((zn,yn,xn), dtype=np.bool)
     for iid, leaf in fc_dict.items():
         _, type_, xi, yi, zi, r, p_iid = leaf
         xx = xi // r_xy
@@ -294,7 +294,7 @@ def swc_to_connection(tree, r_xy=3, r_z=1, imgshape=(256,512,512), flipy=True):
         zz = zi // r_z
         if not is_in_box(xi,yi,zi,imgshape):
             continue
-        mask[zz,yy,xx] = 1
+        mask[zz,yy,xx] = True
         if p_iid != -1 and p_iid != -2:
             xxi, yyi, zzi = fc_dict[p_iid][2:5]
             xxp, yyp, zzp = xxi//r_xy, yyi//r_xy, zzi//r_z

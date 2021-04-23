@@ -187,8 +187,9 @@ def train():
         ddp_print(model)
         ddp_print('='*30 + '\n')
 
-    #import ipdb; ipdb.set_trace()
+    
     model = model.to(args.device)
+    
     if args.checkpoint:
         # load checkpoint
         print(f'Loading checkpoint: {args.checkpoint}')
@@ -205,8 +206,8 @@ def train():
         args.lr /= 10.
 
     optimizer = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay, amsgrad=True)
-    #crit_ce = nn.CrossEntropyLoss().to(args.device)
-    #crit_dice = BinaryDiceLoss(smooth=1e-5).to(args.device)
+    crit_ce = nn.CrossEntropyLoss().to(args.device)
+    crit_dice = BinaryDiceLoss(smooth=1e-5).to(args.device)
     crit = nn.BCEWithLogitsLoss().to(args.device)
 
     # training process
@@ -218,9 +219,9 @@ def train():
     debug_idx = 0
     best_loss = 1.0e10
     for epoch in range(args.max_epochs):
-        #avg_loss_ce = 0
-        #avg_loss_dice = 0
-        avg_loss = 0
+        avg_loss_ce = 0
+        avg_loss_dice = 0
+        avg_loss_bce = 0
         for it in range(args.step_per_epoch):
             try:
                 img, lab, mask, imgfiles, swcfiles = next(train_iter)
@@ -235,8 +236,9 @@ def train():
 
             # center croping for debug, 64x128x128 patch
             img, lab = crop_data(img, lab)
-            mask = mask.unsqueeze(1)#.float()
+            #mask = mask.unsqueeze(1)#.float()
 
+            print(img.shape, lab.shape, mask.shape)
             img_d = img.to(args.device)
             lab_d = lab.to(args.device)
             mask_d = mask.to(args.device)
@@ -246,14 +248,14 @@ def train():
                 with autocast():
                     logits = model(img_d)
                     del img_d
-                    #loss_ce = crit_ce(logits, lab_d.long())
-                    #loss_dice = crit_dice(logits, lab_d)
-                    #loss = loss_ce + loss_dice
-                    mask_logits = logits# * mask_d
-                    mask_lab = lab_d# * mask_d
-                    loss = crit(mask_logits, mask_lab)
-                    ddp_print(f'Logits: {mask_logits.mean().item()}, {mask_logits.max().item()}, {mask_logits.min().item()}')
-                    ddp_print(f'Lab: {mask_lab.mean().item()}, {mask_lab.max().item()}, {mask_lab.min().item()}')
+                    loss_ce = crit_ce(logits[:,0], mask_d.long())
+                    loss_dice = crit_dice(logits, mask_d.float())
+                    loss = loss_ce + loss_dice
+                    #mask_logits = logits# * mask_d
+                    #mask_lab = lab_d# * mask_d
+                    #loss = crit(mask_logits, mask_lab)
+                    #ddp_print(f'Logits: {mask_logits.mean().item()}, {mask_logits.max().item()}, {mask_logits.min().item()}')
+                    #ddp_print(f'Lab: {mask_lab.mean().item()}, {mask_lab.max().item()}, {mask_lab.min().item()}')
                 grad_scaler.scale(loss).backward()
                 grad_scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm(model.parameters(), 12)
@@ -262,10 +264,10 @@ def train():
             else:
                 logits = model(img_d)
                 del img_d
-                #loss_ce = crit_ce(logits, lab_d.long())
-                #loss_dice = crit_dice(logits, lab_d)
-                #loss = loss_ce + loss_dice
-                loss = crit(logits * mask_d, lab_d * mask_d)
+                loss_ce = crit_ce(logits[:,0], mask_d.long())
+                loss_dice = crit_dice(logits, mask_d.float())
+                loss = loss_ce + loss_dice
+                #loss = crit(logits * mask_d, lab_d * mask_d)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm(model.parameters(), 12)
                 optimizer.step()
