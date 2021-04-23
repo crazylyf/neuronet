@@ -360,8 +360,8 @@ if __name__ == '__main__':
     tree = parse_swc(swc_file)
     print(f'Parsing: {time.time() - t0:.4f}s')
     #tree = trim_swc(tree, imgshape)
-    ntot = 10
-    ndis = 5
+    ntot = 2
+    ndis = 1
     pr = cProfile.Profile()
     for i in range(ntot):
         if i == ndis:

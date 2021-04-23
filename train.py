@@ -114,6 +114,14 @@ def save_image_in_training(imgfiles, img, lab, logits, epoch, phase, idx):
         sitk.WriteImage(sitk.GetImageFromArray(log_v), os.path.join(args.save_folder, f'debug_epoch{epoch}_{prefix}_{phase}_pred.tiff'))
 
 
+def get_forward(img_d, mask_d, crit_ce, crit_dice, model):
+    logits = model(img_d)[:,:2]
+    loss_ce = crit_ce(logits, mask_d.long())
+    loss_dice = crit_dice(logits, mask_d.float())
+    loss = loss_ce + loss_dice
+    return loss_ce, loss_dice, loss, logits
+
+
 def validate(model, val_loader, device, crit, crit_ce, crit_dice, epoch, debug=True, debug_idx=0):
     model.eval()
     avg_ce_loss = 0
@@ -127,12 +135,8 @@ def validate(model, val_loader, device, crit, crit_ce, crit_dice, epoch, debug=T
         mask_d = mask.to(device)
         
         with torch.no_grad():
-            logits = model(img_d)
+            loss_ce, loss_dice, loss, logits = get_forward(img_d, mask_d, crit_ce, crit_dice, model)
             del img_d
-            #loss = crit(logits * mask_d, lab_d * mask_d)
-            loss_ce = crit_ce(logits[:,:2], mask_d.long())
-            loss_dice = crit_dice(logits[:2], mask_d.float())
-            loss = loss_ce + loss_dice
 
         avg_ce_loss += loss_ce.item()
         avg_dice_loss += loss_dice.item()
@@ -148,6 +152,8 @@ def validate(model, val_loader, device, crit, crit_ce, crit_dice, epoch, debug=T
     model.train()
 
     return avg_loss
+
+
 
 def train():
 
@@ -249,27 +255,16 @@ def train():
             optimizer.zero_grad()
             if args.amp:
                 with autocast():
-                    logits = model(img_d)
+                    loss_ce, loss_dice, loss, logits = get_forward(img_d, mask_d, crit_ce, crit_dice, model)
                     del img_d
-                    loss_ce = crit_ce(logits[:,:2], mask_d.long())
-                    loss_dice = crit_dice(logits[:2], mask_d.float())
-                    loss = loss_ce + loss_dice
-                    #mask_logits = logits# * mask_d
-                    #mask_lab = lab_d# * mask_d
-                    #loss = crit(mask_logits, mask_lab)
-                    #ddp_print(f'Logits: {mask_logits.mean().item()}, {mask_logits.max().item()}, {mask_logits.min().item()}')
-                    #ddp_print(f'Lab: {mask_lab.mean().item()}, {mask_lab.max().item()}, {mask_lab.min().item()}')
                 grad_scaler.scale(loss).backward()
                 grad_scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm(model.parameters(), 12)
                 grad_scaler.step(optimizer)
                 grad_scaler.update()
             else:
-                logits = model(img_d)
+                loss_ce, loss_dice, loss, logits = get_forward(img_d, mask_d, crit_ce, crit_dice, model)
                 del img_d
-                loss_ce = crit_ce(logits[:,:2], mask_d.long())
-                loss_dice = crit_dice(logits[:2], mask_d.float())
-                loss = loss_ce + loss_dice
                 #loss = crit(logits * mask_d, lab_d * mask_d)
                 loss.backward()
                 torch.nn.utils.clip_grad_norm(model.parameters(), 12)
