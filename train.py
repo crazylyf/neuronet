@@ -104,9 +104,10 @@ def save_image_in_training(imgfiles, img, lab, logits, epoch, phase, idx):
     prefix = path_util.get_file_prefix(imgfile)
     with torch.no_grad():
         img_v = (unnormalize_normal(img[idx].numpy())[0]).astype(np.uint8)
-        lab_v = (unnormalize_normal(lab[idx].numpy().sum(axis=0,keepdims=True).astype(np.float))[0]).astype(np.uint8)
+        lab_v = (unnormalize_normal(lab[idx].numpy().astype(np.float32)[None])[0]).astype(np.uint8)
         
-        log_v = (F.sigmoid(logits[idx]) > 0.5).cpu().numpy().sum(axis=0,keepdims=True).astype(np.float)
+        log_v = F.softmax(logits[idx][:2], dim=0)
+        log_v = log_v.cpu().numpy()[[1]].astype(np.float32)
         log_v = (unnormalize_normal(log_v)[0]).astype(np.uint8)
         sitk.WriteImage(sitk.GetImageFromArray(img_v), os.path.join(args.save_folder, f'debug_epoch{epoch}_{prefix}_{phase}_img.tiff'))
         sitk.WriteImage(sitk.GetImageFromArray(lab_v), os.path.join(args.save_folder, f'debug_epoch{epoch}_{prefix}_{phase}_lab.tiff'))
@@ -115,12 +116,12 @@ def save_image_in_training(imgfiles, img, lab, logits, epoch, phase, idx):
 
 def validate(model, val_loader, device, crit, crit_ce, crit_dice, epoch, debug=True, debug_idx=0):
     model.eval()
-    #avg_ce_loss = 0
-    #avg_dice_loss = 0
+    avg_ce_loss = 0
+    avg_dice_loss = 0
     avg_loss = 0
     for img,lab,mask,imgfiles,swcfiles in val_loader:
         img, lab = crop_data(img, lab)
-        mask = mask.unsqueeze(1)#.float()
+        #mask = mask.unsqueeze(1)#.float()
         img_d = img.to(device)
         lab_d = lab.to(device)
         mask_d = mask.to(device)
@@ -129,18 +130,20 @@ def validate(model, val_loader, device, crit, crit_ce, crit_dice, epoch, debug=T
             logits = model(img_d)
             del img_d
             #loss = crit(logits * mask_d, lab_d * mask_d)
-            loss = crit(logits, lab_d)
+            loss_ce = crit_ce(logits[:,:2], mask_d.long())
+            loss_dice = crit_dice(logits[:2], mask_d.float())
+            loss = loss_ce + loss_dice
 
-        #avg_ce_loss += loss_ce
-        #avg_dice_loss += loss_dice
+        avg_ce_loss += loss_ce.item()
+        avg_dice_loss += loss_dice.item()
         avg_loss += loss.item()
 
-    #avg_ce_loss /= len(val_loader)
-    #avg_dice_loss /= len(val_loader)
+    avg_ce_loss /= len(val_loader)
+    avg_dice_loss /= len(val_loader)
     avg_loss /= len(val_loader)
     
     if debug and args.is_master:
-        save_image_in_training(imgfiles, img, lab, logits, epoch, 'val', debug_idx)
+        save_image_in_training(imgfiles, img, mask, logits, epoch, 'val', debug_idx)
 
     model.train()
 
@@ -280,15 +283,16 @@ def train():
                 for istat, stat in enumerate(grad_stats):
                     print(istat, *stat)
             
-            #avg_loss_ce += loss_ce.item()
-            #avg_loss_dice += loss_dice.item()
+            avg_loss_ce += loss_ce.item()
+            avg_loss_dice += loss_dice.item()
             avg_loss += loss.item()
 
             if it % 2 == 0:
-                ddp_print(f'[{epoch}/{it}] loss={loss.item():.5f}, time: {time.time() - t0:.4f}s')
+                #ddp_print(f'[{epoch}/{it}] loss={loss.item():.5f}, time: {time.time() - t0:.4f}s')
+                ddp_print(f'[{epoch}/{it}] loss={loss.item():.5f}, loss_ce={loss_ce.item():.5f}, loss_dice={loss_dice.item():.5f}, time: {time.time() - t0:.4f}s')
 
-        #avg_loss_ce /= args.step_per_epoch
-        #avg_loss_dice /= args.step_per_epoch
+        avg_loss_ce /= args.step_per_epoch
+        avg_loss_dice /= args.step_per_epoch
         avg_loss /= args.step_per_epoch
 
         # do validation
@@ -305,7 +309,7 @@ def train():
 
         # save image for subsequent analysis
         if debug and args.is_master:
-            save_image_in_training(imgfiles, img, lab, logits, epoch, 'train', debug_idx)
+            save_image_in_training(imgfiles, img, mask, logits, epoch, 'train', debug_idx)
 
         # learning rate decay
         cur_lr = poly_lr(epoch, args.max_epochs, args.lr, 0.9)

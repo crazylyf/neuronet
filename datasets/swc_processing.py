@@ -245,7 +245,7 @@ def swc_to_fullconnect(tree):
 
         # soma
         if p == -1: 
-            key = (int(round(x)), int(round(y)), int(round(z)))
+            key = (idx, int(round(x)), int(round(y)), int(round(z)), p)
             if key not in fc_indices:
                 iid = len(fc_indices)
                 fc_indices[key] = iid
@@ -260,22 +260,35 @@ def swc_to_fullconnect(tree):
         cur_pos = leaf[2:5]
         par_pos = parent_leaf[2:5]
         lin = line_nd(par_pos[::-1], cur_pos[::-1], endpoint=True)
-        for pos in zip(lin[2],lin[1],lin[0]):
-            if pos not in fc_indices:
+        for ip,xp,yp,zp in zip(range(len(lin[2])),lin[2],lin[1],lin[0]):
+            if ip == 0:
+                key = (parent_leaf[0], xp, yp, zp, parent_leaf[-1])
+            else:
+                key = (idx, xp, yp, zp, p)
+            if key not in fc_indices:
                 iid = len(fc_indices)
-                fc_indices[pos] = iid
+                fc_indices[key] = iid
         for i in range(1, len(lin[0])):
             pos = lin[2][i], lin[1][i], lin[0][i]
             pos_pre = lin[2][i-1], lin[1][i-1], lin[0][i-1]
-            iid = fc_indices[pos]
-            iid_pre = fc_indices[pos_pre]
+            key = (idx, *pos, p)
+            iid = fc_indices[key]
+            if i == 1:
+                key_pre = (parent_leaf[0], *pos_pre, parent_leaf[-1])
+            else:
+                key_pre = (idx, *pos_pre, p)
+            #print(fc_indices, i, pos, pos_pre)
+            iid_pre = fc_indices[key_pre]
             type_ = leaf[1]
             r = leaf[5]
             fc_dict[iid] = (iid,type_,pos[0],pos[1],pos[2],r,iid_pre)
             if iid_pre not in fc_dict:
+                # out-of-box point
                 fc_dict[iid_pre] = (iid_pre,type_,pos_pre[0],pos_pre[1],pos_pre[2],r,-2)
 
-    assert(len(fc_dict) == len(fc_indices))
+    #assert(len(fc_dict) == len(fc_indices)), f'{len(fc_dict)} != {len(fc_indices)}'
+    if len(fc_dict) != len(fc_indices):
+        print(f'Warning: inconsistent: {len(fc_dict)} != {len(fc_indices)}')
         
     return fc_dict, fc_indices
 
@@ -335,6 +348,9 @@ def check_connectivity(mask):
     
 if __name__ == '__main__':
     import time
+    import cProfile
+    import pstats
+    import io
 
     prefix = '15342_3352_2363'
     swc_file = f'/home/lyf/Research/auto_trace/neuronet/data/task0003_cropAll/{prefix}.swc'
@@ -344,12 +360,25 @@ if __name__ == '__main__':
     tree = parse_swc(swc_file)
     print(f'Parsing: {time.time() - t0:.4f}s')
     #tree = trim_swc(tree, imgshape)
-    tree = trim_out_of_box(tree, imgshape, True)
-    print(f'Trim: {time.time() - t0:.4f}s')
-    mask, lab = swc_to_connection(tree, r_xy=3, r_z=1, imgshape=imgshape, flipy=True)
-    valid = check_connectivity(mask)
-    print(f'Validicity: {valid}')
-    print(f'Labelling: {time.time() - t0:.4f}s')
+    ntot = 10
+    ndis = 5
+    pr = cProfile.Profile()
+    for i in range(ntot):
+        if i == ndis:
+            pr.enable()
+        tree = trim_out_of_box(tree, imgshape, True)
+        print(f'Trim: {time.time() - t0:.4f}s')
+        mask, lab = swc_to_connection(tree, r_xy=3, r_z=1, imgshape=imgshape, flipy=True)
+        valid = check_connectivity(mask)
+        print(f'Validicity: {valid}')
+        print(f'Labelling: {time.time() - t0:.4f}s')
+    
+    pr.disable()
+    s = io.StringIO()
+    sortby = 'cumulative'
+    ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+    ps.print_stats()
+    print(s.getvalue())
     
     sitk.WriteImage(sitk.GetImageFromArray(lab.max(axis=0).astype(np.uint8)), f'{prefix}_label.tiff')
     sitk.WriteImage(sitk.GetImageFromArray(mask.astype(np.uint8)), f'{prefix}_mask.tiff')
