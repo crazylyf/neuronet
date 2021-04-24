@@ -116,9 +116,17 @@ def save_image_in_training(imgfiles, img, lab, logits, epoch, phase, idx):
 
 def get_forward(img_d, mask_d, crit_ce, crit_dice, model):
     logits = model(img_d)[:,:2]
-    loss_ce = crit_ce(logits, mask_d.long())
-    loss_dice = crit_dice(logits, mask_d.float())
-    loss = loss_ce + loss_dice
+    probs = F.softmax(logits, dim=1)
+    with torch.no_grad():
+        pseudo_fg = probs[:,1] > 0.5
+        neglect_mask = ((~pseudo_fg) | mask_d).float()
+    loss_ce = (crit_ce(logits, mask_d.long()) * neglect_mask).mean()
+    loss_dice = crit_dice(probs * neglect_mask.unsqueeze(1), mask_d.float())
+    # we must add an regularization loss to avoid of overfitting
+    coeff_reg = 1e-2
+    loss_reg = coeff_reg * (probs[:,1] * (~mask_d).float()).mean()
+    loss = loss_ce + loss_dice + loss_reg
+    ddp_print(f'Debug: probs_mean={probs[:,1].mean().item():.5f}, loss_reg={loss_reg.item():.5f}, neglect_mask_mean={neglect_mask.mean().item():.5f}')
     return loss_ce, loss_dice, loss, logits
 
 
@@ -215,8 +223,8 @@ def train():
         args.lr /= 10.
 
     optimizer = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay, amsgrad=True)
-    crit_ce = nn.CrossEntropyLoss().to(args.device)
-    crit_dice = BinaryDiceLoss(smooth=1e-5).to(args.device)
+    crit_ce = nn.CrossEntropyLoss(reduction='none').to(args.device)
+    crit_dice = BinaryDiceLoss(smooth=1e-5, input_logits=False).to(args.device)
     crit = nn.BCEWithLogitsLoss().to(args.device)
 
     # training process
