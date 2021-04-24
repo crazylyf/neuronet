@@ -123,7 +123,7 @@ def get_forward(img_d, mask_d, crit_ce, crit_dice, model):
     loss_ce = (crit_ce(logits, mask_d.long()) * neglect_mask).mean()
     loss_dice = crit_dice(probs * neglect_mask.unsqueeze(1), mask_d.float())
     # we must add an regularization loss to avoid of overfitting
-    coeff_reg = 1e-2
+    coeff_reg = 0.0
     loss_reg = coeff_reg * (probs[:,1] * (~mask_d).float()).mean()
     loss = loss_ce + loss_dice + loss_reg
     ddp_print(f'Debug: probs_mean={probs[:,1].mean().item():.5f}, loss_reg={loss_reg.item():.5f}, neglect_mask_mean={neglect_mask.mean().item():.5f}')

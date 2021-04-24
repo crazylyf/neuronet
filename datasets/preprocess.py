@@ -262,7 +262,7 @@ if __name__ == '__main__':
     spacing_file = '/home/lyf/data/seu_mouse/crop_data/scripts/AllbrainResolutionInfo.csv'
     output_dir = '/home/lyf/Research/auto_trace/neuronet/data/task0004_notLabelSoma'
     is_train = True
-    label_soma = False
+    label_soma = True
     num_threads = 8
     gp = GenericPreprocessor(label_soma=label_soma)
     gp.run(data_dir, spacing_file, output_dir, is_train=is_train, num_threads=num_threads)
