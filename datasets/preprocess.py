@@ -260,7 +260,7 @@ class GenericPreprocessor(object):
 if __name__ == '__main__':
     data_dir = '/PBshare/lyf/transtation/seu_mouse/crop_data/dendriteImageSecR/'
     spacing_file = '/home/lyf/data/seu_mouse/crop_data/scripts/AllbrainResolutionInfo.csv'
-    output_dir = '/home/lyf/Research/auto_trace/neuronet/data/task0004_notLabelSoma'
+    output_dir = '/home/lyf/Research/auto_trace/neuronet/data/task0005_cropAll'
     is_train = True
     label_soma = True
     num_threads = 8
