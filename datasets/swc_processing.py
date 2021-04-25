@@ -31,18 +31,31 @@ from swc_handler import parse_swc, write_swc
 from path_util import get_file_prefix
 
 
-def soma_labelling(image, z_ratio=0.3, r=9, thresh=220, label=255):
+def soma_labelling(image, z_ratio=0.3, r=9, thresh=220, label=255, soma_pos=None):
     dz, dy, dx = image.shape
+    if soma_pos is None:
+        cx, cy, cz = dx//2, dy//2, dz//2
+    else:
+        cx, cy, cz = soma_pos   # in x-y-z order
+        cx = int(round(cx))
+        cy = int(round(cy))
+        cz = int(round(cz))
 
     img_thresh = image.copy()
     img_thresh[img_thresh > thresh] = thresh
     
-    cx, cy, cz = dx//2, dy//2, dz//2
     rz = int(round(z_ratio * r)) 
     img_labels = []
     zs, ze = cz - rz, cz + rz
     ys, ye = cy - r, cy + r 
     xs, xe = cx - r, cx + r 
+
+    zs = max(0, zs)
+    ze = min(ze, dz)
+    ys = max(0, ys)
+    ye = min(ye, dy)
+    xs = max(0, xs)
+    xe = min(xe, dx)
     img_thresh[zs:ze, ys:ye, xs:xe] = label
     
     return img_thresh
@@ -140,14 +153,50 @@ def load_spacing(spacing_file, zyx_order=True):
     
     return spacing_dict
 
+def trim_out_of_box(tree_orig, imgshape, keep_candidate_points=True):
+    """ 
+    Trim the out-of-box leaves
+    """
+    # execute trimming
+    child_dict = {}
+    for leaf in tree_orig:
+        if leaf[-1] in child_dict:
+            child_dict[leaf[-1]].append(leaf[0])
+        else:
+            child_dict[leaf[-1]] = [leaf[0]]
+    
+    pos_dict = {}
+    for i, leaf in enumerate(tree_orig):
+        pos_dict[leaf[0]] = leaf
+
+    tree = []
+    for i, leaf in enumerate(tree_orig):
+        idx, type_, x, y, z, r, p = leaf
+        ib = is_in_box(x,y,z,imgshape)
+        if ib: 
+            tree.append(leaf)
+        elif keep_candidate_points:
+            if p in pos_dict and is_in_box(*pos_dict[p][2:5], imgshape):
+                tree.append(leaf)
+            elif idx in child_dict:
+                for ch_leaf in child_dict[idx]:
+                    if is_in_box(*pos_dict[ch_leaf][2:5], imgshape):
+                        tree.append(leaf)
+                        break
+    return tree
+
 def swc_to_image(tree, r_exp=3, z_ratio=0.4, imgshape=(256,512,512), flipy=True):
     # Note imgshape in (z,y,x) order
     # initialize empty image
     img = np.zeros(shape=imgshape, dtype=np.uint8)
     # get the position tree and parent tree
     pos_dict = {}
+    soma_node = None
     for i, leaf in enumerate(tree):
         idx, type_, x, y, z, r, p = leaf
+        if p == -1:
+            soma_node = leaf
+        
         leaf = (idx, type_, x, y, z, r, p, is_in_box(x,y,z,imgshape))
         pos_dict[idx] = leaf
         tree[i] = leaf
@@ -156,7 +205,9 @@ def swc_to_image(tree, r_exp=3, z_ratio=0.4, imgshape=(256,512,512), flipy=True)
     for _, leaf in pos_dict.items():
         idx, type_, x, y, z, r, p, ib = leaf
         if idx == 1: continue   # soma
-        
+       
+        if p not in pos_dict: 
+            continue
         parent_leaf = pos_dict[p]
         if (not ib) and (not parent_leaf[ib]):
             print('All points are out of box! do trim_swc before!')
@@ -184,7 +235,11 @@ def swc_to_image(tree, r_exp=3, z_ratio=0.4, imgshape=(256,512,512), flipy=True)
     selem = np.ones((r_z, r_exp, r_exp), dtype=np.uint8)
     img = morphology.dilation(img, selem)
     # soma-labelling
-    lab_img = soma_labelling(img, r=r_exp*2+1, thresh=220, label=1)
+    if soma_node is not None:
+        lab_img = soma_labelling(img, r=r_exp*2+1, thresh=220, label=1, soma_pos=soma_node[2:5])
+    else:
+        lab_img = img
+        
     if flipy:
         lab_img = lab_img[:,::-1]   # flip in y-axis, as the image is flipped
 

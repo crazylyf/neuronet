@@ -9,6 +9,7 @@
 #   Description  : 
 #
 #================================================================
+import numpy as np
 
 def normalize_normal(image4d, mask=None):
     assert image4d.ndim == 4, "image must in 4 dimension: c,z,y,x"
@@ -31,7 +32,7 @@ def unnormalize_normal(image4d, output_range=(0,255)):
     return image4d
 
 def random_crop_3D_image(img, crop_size):
-    if type(crop_size) not in (tuple, list):
+    if type(crop_size) not in (tuple, list, np.ndarray):
         crop_size = [crop_size] * len(img.shape)
     else:
         assert len(crop_size) == len(

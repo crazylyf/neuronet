@@ -21,7 +21,10 @@ from batchgenerators.augmentations.utils import create_zero_centered_coordinate_
 from neuronet.utils import image_util
 
 def get_random_shape(img, scale_range, per_axis):
-    shape = np.array(img[0].shape)
+    if type(img) == np.ndarray and img.size > 1024:
+        shape = np.array(img[0].shape)
+    else:
+        shape = np.array(list(img))
     if per_axis:
         scales = np.random.uniform(*scale_range, size=len(shape))
     else:
@@ -58,7 +61,10 @@ def image_scale_4D(img, tree, spacing, shape, target_shape, mode, anti_aliasing,
 def random_crop_image_4D(img, tree, spacing, target_shape):
     new_img = np.zeros((img.shape[0], *target_shape), dtype=img.dtype)
     for c in range(img.shape[0]):
-        new_img[c],sz,sy,sx = image_util.random_crop_3D_image(img[c], target_shape)
+        if c == 0:
+            new_img[c],sz,sy,sx = image_util.random_crop_3D_image(img[c], target_shape)
+        else:
+            new_img[c] = img[sz:sz+target_shape[0], sy:sy+target_shape[2], sx:sx:target_shape[2]]
     # processing the tree
     if tree is not None:
         new_tree = []
@@ -280,8 +286,9 @@ class ScaleToFixedSize(AbstractTransform):
             
     
 class RandomCrop(AbstractTransform):
-    def __init__(self, p=0.5, crop_range=(0.85, 1), per_axis=True):
+    def __init__(self, p=0.5, imgshape=None, crop_range=(0.85, 1), per_axis=True):
         super(RandomCrop, self).__init__(p)
+        self.imgshape = imgshape
         self.crop_range = crop_range
         self.per_axis = per_axis
 
@@ -289,7 +296,7 @@ class RandomCrop(AbstractTransform):
         if np.random.random() > self.p:
             return img, tree, spacing
         
-        shape, target_shape = get_random_shape(img, self.crop_range, self.per_axis)
+        shape, target_shape = get_random_shape(self.imgshape, self.crop_range, self.per_axis)
 
         img, tree, spacing = random_crop_image_4D(img, tree, spacing, target_shape)
         return img, tree, spacing       
@@ -558,12 +565,12 @@ class InstanceAugmentation(object):
         if phase == 'train':
             self.augment = Compose([
                 ConvertToFloat(),
-                RandomCenterCrop(1.0, imgshape),
+                RandomCrop(1.0, imgshape),
                 RandomSaturation(p=p),
                 RandomBrightness(p=p),
                 #RandomGaussianNoise(p=p),
                 RandomGaussianBlur(p=p),
-                #RandomResample(p=p),
+                RandomResample(p=p),
                 #RandomPadding(p),
                 #RandomCrop(p),
                 #RandomScale(p),

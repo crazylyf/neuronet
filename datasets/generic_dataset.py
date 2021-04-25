@@ -19,7 +19,7 @@ import sys
 
 from swc_handler import parse_swc
 from neuronet.augmentation.generic_augmentation import InstanceAugmentation
-from neuronet.datasets.swc_processing import trim_swc, swc_to_image
+from neuronet.datasets.swc_processing import trim_swc, swc_to_image, trim_out_of_box
 
 # To avoid the recursionlimit error, maybe encountered in trim_swc
 sys.setrecursionlimit(30000)
@@ -57,13 +57,8 @@ class GenericDataset(tudata.Dataset):
         img, tree, _ = self.augment(img, tree, spacing)
         # convert swc to image
         # firstly trim_swc via deleting out-of-box points
-        tree = trim_swc(tree, self.imgshape, True)
+        tree = trim_out_of_box(tree, self.imgshape, True)
         lab = swc_to_image(tree)
-        # ground truth leaking test
-        #img_mean = img.reshape(img.shape[0], -1).mean(axis=1)
-        #img_std = img.reshape(img.shape[0], -1).std(axis=1)
-        #vleak = (img_mean + 2 * img_std).reshape(img_mean.shape[0],1,1,1)
-        #img = img + vleak * lab
         
         return torch.from_numpy(img.astype(np.float32)), torch.from_numpy(lab.astype(np.uint8)), imgfile, swcfile
 
