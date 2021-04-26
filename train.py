@@ -112,6 +112,13 @@ def save_image_in_training(imgfiles, img, lab, logits, epoch, phase, idx):
         sitk.WriteImage(sitk.GetImageFromArray(lab_v), os.path.join(args.save_folder, f'debug_epoch{epoch}_{prefix}_{phase}_lab.tiff'))
         sitk.WriteImage(sitk.GetImageFromArray(log_v), os.path.join(args.save_folder, f'debug_epoch{epoch}_{prefix}_{phase}_pred.tiff'))
 
+def get_forward(img_d, lab_d, crit_ce, crit_dice, model):
+    logits = model(img_d)
+    loss_ce = crit_ce(logits, lab_d.long())
+    loss_dice = crit_dice(logits, lab_d)
+    loss = loss_ce + loss_dice
+    return loss_ce, loss_dice, loss, logits
+
 
 def validate(model, val_loader, device, crit_ce, crit_dice, epoch, debug=True, debug_idx=0):
     model.eval()
@@ -123,11 +130,8 @@ def validate(model, val_loader, device, crit_ce, crit_dice, epoch, debug=True, d
         lab_d = lab.to(device)
         
         with torch.no_grad():
-            logits = model(img_d)
+            loss_ce, loss_dice, loss, logits = get_forward(img_d, lab_d, crit_ce, crit_dice, model)
             del img_d
-            loss_ce = crit_ce(logits, lab_d.long())
-            loss_dice = crit_dice(logits, lab_d)
-            loss = loss_ce + loss_dice
 
         avg_ce_loss += loss_ce
         avg_dice_loss += loss_dice
@@ -230,7 +234,6 @@ def train():
 
             # center croping for debug, 64x128x128 patch
             img, lab = crop_data(img, lab)
-            
 
             img_d = img.to(args.device)
             lab_d = lab.to(args.device)
@@ -238,22 +241,16 @@ def train():
             optimizer.zero_grad()
             if args.amp:
                 with autocast():
-                    logits = model(img_d)
+                    loss_ce, loss_dice, loss, logits = get_forward(img_d, lab_d, crit_ce, crit_dice, model)
                     del img_d
-                    loss_ce = crit_ce(logits, lab_d.long())
-                    loss_dice = crit_dice(logits, lab_d)
-                    loss = loss_ce + loss_dice
                 grad_scaler.scale(loss).backward()
                 grad_scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm(model.parameters(), 12)
                 grad_scaler.step(optimizer)
                 grad_scaler.update()
             else:
-                logits = model(img_d)
+                loss_ce, loss_dice, loss, logits = get_forward(img_d, lab_d, crit_ce, crit_dice, model)
                 del img_d
-                loss_ce = crit_ce(logits, lab_d.long())
-                loss_dice = crit_dice(logits, lab_d)
-                loss = loss_ce + loss_dice
                 loss.backward()
                 torch.nn.utils.clip_grad_norm(model.parameters(), 12)
                 optimizer.step()

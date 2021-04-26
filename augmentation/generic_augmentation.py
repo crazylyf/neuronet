@@ -71,7 +71,9 @@ def random_crop_image_4D(img, tree, spacing, target_shape):
         for leaf in tree:
             idx, type_, x, y, z, r, p = leaf
             x = x - sx
-            y = y - sy
+            # Since the y-coordinate in swc file is mirrored by crop
+            # center, the coordinate change should take care!!!
+            y = target_shape[1] - (img.shape[2] - y - sy)
             z = z - sz
             new_tree.append((idx,type_,x,y,z,r,p))
         return new_img, new_tree, spacing
@@ -566,16 +568,12 @@ class InstanceAugmentation(object):
             self.augment = Compose([
                 ConvertToFloat(),
                 RandomCrop(1.0, imgshape),
-                RandomSaturation(p=p),
-                RandomBrightness(p=p),
-                #RandomGaussianNoise(p=p),
-                RandomGaussianBlur(p=p),
-                RandomResample(p=p),
-                #RandomPadding(p),
-                #RandomCrop(p),
-                #RandomScale(p),
-                RandomMirror(p=p),
-                ScaleToFixedSize(1.0, imgshape),
+                #RandomSaturation(p=p),
+                #RandomBrightness(p=p),
+                #RandomGaussianBlur(p=p),
+                #RandomResample(p=p),
+                #RandomMirror(p=p),
+                #ScaleToFixedSize(1.0, imgshape),
             ])
         elif phase == 'val' or phase == 'test':
             self.augment = Compose([
@@ -598,8 +596,8 @@ if __name__ == '__main__':
 
     
     file_prefix = '8315_19523_2299'
-    imgfile = f'../data/task0003_cropAll/{file_prefix}.npz'
-    swcfile = f'../data/task0003_cropAll/{file_prefix}.swc'
+    imgfile = f'../data/task0005_cropAll/{file_prefix}.npz'
+    swcfile = f'../data/task0005_cropAll/{file_prefix}.swc'
     #set_deterministic(True, seed=1024)
     #img = sitk.GetArrayFromImage(sitk.ReadImage(imgfile))[None]
     #img = img.astype(np.float32)
@@ -607,7 +605,7 @@ if __name__ == '__main__':
     #img = normalize_normal(img)
 
     img = np.load(imgfile)['data']    # 4D
-    if 0:
+    if 1:
         # save original image for visual inspection
         img_orig_un = unnormalize_normal(img.copy()).astype(np.uint8)[0]
         sitk.WriteImage(sitk.GetImageFromArray(img_orig_un), 'original.tiff')
@@ -619,7 +617,7 @@ if __name__ == '__main__':
     t0 = time.time()
     
     #aug = InstanceAugmentation(p=1.0)
-    aug = InstanceAugmentation(0.2, (256,512,512))
+    aug = InstanceAugmentation(0.2, (128,128,128))
     img_new, tree_new, spacing = aug(img, tree, spacing)
     print(f'Augmented image statistics: {img_new.mean()}, {img_new.std()}, {img_new.min()}, {img_new.max()}')
     print(f'Timed used: {time.time()-t0}s')

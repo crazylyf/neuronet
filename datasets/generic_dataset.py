@@ -58,7 +58,7 @@ class GenericDataset(tudata.Dataset):
         # convert swc to image
         # firstly trim_swc via deleting out-of-box points
         tree = trim_out_of_box(tree, self.imgshape, True)
-        lab = swc_to_image(tree)
+        lab = swc_to_image(tree, imgshape=self.imgshape)
         
         return torch.from_numpy(img.astype(np.float32)), torch.from_numpy(lab.astype(np.uint8)), imgfile, swcfile
 
