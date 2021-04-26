@@ -1,8 +1,11 @@
 data/
 exps/
 
-*/**/__pycache__
-*/**/*.pyc
-*/**/*.pyd
-*/**/*.tiff
-*.tiff
+**/__pycache__
+**/*.pyc
+**/*.pyd
+**/*.tiff
+**/*.swc
+**/*.log
+**/*.out
+
