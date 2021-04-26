@@ -126,6 +126,7 @@ def validate(model, val_loader, device, crit_ce, crit_dice, epoch, debug=True, d
     avg_dice_loss = 0
     for img,lab,imgfiles,swcfiles in val_loader:
         img, lab = crop_data(img, lab)
+        print(img.shape, lab.shape)
         img_d = img.to(device)
         lab_d = lab.to(device)
         

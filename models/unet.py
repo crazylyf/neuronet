@@ -91,7 +91,7 @@ class UNet(BaseModel):
 
         self.conv_pad_sizes = []
         for krnl in self.conv_kernel_sizes:
-            self.conv_pad_sizes.append([1 if i == 3 else 0 for i in krnl])
+            self.conv_pad_sizes.append([(i-1)//2 for i in krnl])
 
         if max_num_features is None:
             if self.conv_op == nn.Conv3d:

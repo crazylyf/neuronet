@@ -21,7 +21,7 @@ export NODE_RANK=0
 export WORLD_SIZE=$((NUM_NODES * $NUM_GPUS_PER_NODE))
 
 # launch our script w/ `torch.distributed.launch`
-#CUDA_VISIBLE_DEVICES=0,1 nohup \
+CUDA_VISIBLE_DEVICES=0,1 nohup \
 python -u -m torch.distributed.launch \
     --nproc_per_node=$NUM_GPUS_PER_NODE \
     --nnodes=$NUM_NODES \
@@ -33,8 +33,8 @@ python -u -m torch.distributed.launch \
     --amp \
     --step_per_epoch 200 \
     --test_frequency 3 \
-    --image_shape 128,128,128 \
+    --image_shape 96,128,128 \
     --batch_size 1 \
-    --data_file data/task0005_cropAll/data_splits.pkl #\
-    #> ${exp_folder}/fullsize_ddp_gtleak.log & 
+    --data_file data/task0005_cropAll/data_splits.pkl \
+    > ${exp_folder}/fullsize_ddp_gtleak.log & 
 

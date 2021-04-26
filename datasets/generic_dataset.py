@@ -29,6 +29,7 @@ class GenericDataset(tudata.Dataset):
     def __init__(self, split_file, phase='train', imgshape=(256,512,512)):
         self.data_list = self.load_data_list(split_file, phase)
         self.imgshape = imgshape
+        print(f'Image shape of {phase}: {imgshape}')
 
         # augmentations
         self.augment = InstanceAugmentation(p=0.2, imgshape=imgshape, phase=phase)
@@ -57,8 +58,8 @@ class GenericDataset(tudata.Dataset):
         img, tree, _ = self.augment(img, tree, spacing)
         # convert swc to image
         # firstly trim_swc via deleting out-of-box points
-        tree = trim_out_of_box(tree, self.imgshape, True)
-        lab = swc_to_image(tree, imgshape=self.imgshape)
+        tree = trim_out_of_box(tree, img[0].shape, True)
+        lab = swc_to_image(tree, imgshape=img[0].shape)
         
         return torch.from_numpy(img.astype(np.float32)), torch.from_numpy(lab.astype(np.uint8)), imgfile, swcfile
 

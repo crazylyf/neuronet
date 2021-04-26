@@ -2,8 +2,8 @@
 "input_channels": 1, 
 "base_num_features": 8, 
 "num_classes": 2,
-"pool_op_kernel_sizes": [[1,2,2], [2,2,2], [2,2,2], [2,2,2], [2,2,2], [2,2,2], [2,2,2]],
-"conv_kernel_sizes": [[3,3,3], [3,3,3], [3,3,3], [3,3,3], [3,3,3], [3,3,3], [3,3,3]],
+"pool_op_kernel_sizes": [[1,2,2], [2,2,2], [2,2,2], [2,2,2], [2,2,2]],
+"conv_kernel_sizes": [[3,3,3], [3,3,3], [3,3,3], [3,3,3], [3,3,3]],
 
 "num_conv_per_stage": 2,
 "feat_map_mul_on_downscale": 2,

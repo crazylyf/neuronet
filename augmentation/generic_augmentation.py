@@ -120,7 +120,7 @@ class ConvertToFloat(object):
 
 # Coordinate-invariant augmentation
 class RandomSaturation(AbstractTransform):
-    def __init__(self, lower=0.8, upper=1.3, p=0.5):
+    def __init__(self, lower=0.9, upper=1.1, p=0.5):
         super(RandomSaturation, self).__init__(p)
         self.lower = lower
         self.upper = upper
@@ -136,7 +136,7 @@ class RandomSaturation(AbstractTransform):
         return img, tree, spacing
 
 class RandomBrightness(AbstractTransform):
-    def __init__(self, dratio=0.15, p=0.5):
+    def __init__(self, dratio=0.1, p=0.5):
         super(RandomBrightness, self).__init__(p)
         assert dratio >= 0. and dratio < 1.
         self.dratio = dratio
@@ -189,7 +189,7 @@ class RandomGaussianBlur(AbstractTransform):
             
 
 class RandomResample(AbstractTransform):
-    def __init__(self, p=0.5, zoom_range=(0.5,1), order_down=1, order_up=0, per_axis=True):
+    def __init__(self, p=0.5, zoom_range=(0.8,1), order_down=1, order_up=0, per_axis=True):
         super(RandomResample, self).__init__(p)
         self.zoom_range = zoom_range
         self.order_down = order_down
@@ -298,7 +298,10 @@ class RandomCrop(AbstractTransform):
         if np.random.random() > self.p:
             return img, tree, spacing
         
-        shape, target_shape = get_random_shape(self.imgshape, self.crop_range, self.per_axis)
+        if self.crop_range[0] == self.crop_range[1]:
+            target_shape = self.imgshape
+        else:
+            shape, target_shape = get_random_shape(self.imgshape, self.crop_range, self.per_axis)
 
         img, tree, spacing = random_crop_image_4D(img, tree, spacing, target_shape)
         return img, tree, spacing       
@@ -568,18 +571,18 @@ class InstanceAugmentation(object):
             self.augment = Compose([
                 ConvertToFloat(),
                 RandomCrop(1.0, imgshape),
-                #RandomSaturation(p=p),
-                #RandomBrightness(p=p),
-                #RandomGaussianBlur(p=p),
-                #RandomResample(p=p),
-                #RandomMirror(p=p),
-                #ScaleToFixedSize(1.0, imgshape),
+                RandomSaturation(p=p),
+                RandomBrightness(p=p),
+                #RandomGaussianBlur(p=p/2.),
+                RandomResample(p=p),
+                RandomMirror(p=p),
+                ScaleToFixedSize(1.0, imgshape),
             ])
         elif phase == 'val' or phase == 'test':
             self.augment = Compose([
                 ConvertToFloat(),
-                RandomCenterCrop(1.0, imgshape),
-                ScaleToFixedSize(1.0, imgshape),
+                #RandomCenterCrop(1.0, imgshape),
+                RandomCrop(1.0, imgshape, crop_range=(1,1))
             ])
         else:
             raise NotImplementedError
