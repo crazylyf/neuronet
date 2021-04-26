@@ -80,6 +80,7 @@ def random_crop_image_4D(img, tree, spacing, target_shape):
     return new_img, tree, spacing
 
 
+
 class Compose(object):
     """Composes several augmentations together.
     Args:
@@ -99,6 +100,17 @@ class Compose(object):
             img, tree, spacing = t(img, tree, spacing)
         return img, tree, spacing
 
+class ResizeToDividable(object):
+    def __init__(self, divid=2**5):
+        self.divid = divid
+
+    def __call__(self, img, tree=None, spacing=None):
+        shape = np.array(img[0].shape).astype(np.float32)
+        target_shape = np.round(shape / self.divid).astype(np.long) * self.divid
+        img, tree, spacing = image_scale_4D(img, tree, spacing, shape, target_shape, mode='edge', anti_aliasing=False, update_spacing=True)
+        
+        return img, tree, spacing
+        
 
 class AbstractTransform(object):
     def __init__(self, p=0.5):
@@ -566,7 +578,7 @@ class RandomGeometric(AbstractTransform):
         return img_p, tree, spacing
 
 class InstanceAugmentation(object):
-    def __init__(self, p=0.2, imgshape=(256,512,512), phase='train'):
+    def __init__(self, p=0.2, imgshape=(256,512,512), phase='train', divid=2**5):
         if phase == 'train':
             self.augment = Compose([
                 ConvertToFloat(),
@@ -581,8 +593,8 @@ class InstanceAugmentation(object):
         elif phase == 'val' or phase == 'test':
             self.augment = Compose([
                 ConvertToFloat(),
-                #RandomCenterCrop(1.0, imgshape),
-                RandomCrop(1.0, imgshape, crop_range=(1,1))
+                #RandomCrop(1.0, imgshape, crop_range=(1,1)),
+                ResizeToDividable(divid),
             ])
         else:
             raise NotImplementedError

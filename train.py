@@ -108,9 +108,19 @@ def save_image_in_training(imgfiles, img, lab, logits, epoch, phase, idx):
         
         logits = F.softmax(logits, dim=1).to(torch.device('cpu'))
         log_v = (unnormalize_normal(logits[idx,[1]].numpy())[0]).astype(np.uint8)
-        sitk.WriteImage(sitk.GetImageFromArray(img_v), os.path.join(args.save_folder, f'debug_epoch{epoch}_{prefix}_{phase}_img.tiff'))
-        sitk.WriteImage(sitk.GetImageFromArray(lab_v), os.path.join(args.save_folder, f'debug_epoch{epoch}_{prefix}_{phase}_lab.tiff'))
-        sitk.WriteImage(sitk.GetImageFromArray(log_v), os.path.join(args.save_folder, f'debug_epoch{epoch}_{prefix}_{phase}_pred.tiff'))
+        if phase == 'train':
+            out_img_file = f'debug_epoch{epoch}_{prefix}_{phase}_img.tiff'
+            out_lab_file = f'debug_epoch{epoch}_{prefix}_{phase}_lab.tiff'
+            out_pred_file = f'debug_epoch{epoch}_{prefix}_{phase}_pred.tiff'
+        else:
+            out_img_file = f'debug_{prefix}_{phase}_img.tiff'
+            out_lab_file = f'debug_{prefix}_{phase}_lab.tiff'
+            out_pred_file = f'debug_{prefix}_{phase}_pred.tiff'
+
+        sitk.WriteImage(sitk.GetImageFromArray(img_v), os.path.join(args.save_folder, out_img_file))
+        sitk.WriteImage(sitk.GetImageFromArray(lab_v), os.path.join(args.save_folder, out_lab_file))
+        sitk.WriteImage(sitk.GetImageFromArray(log_v), os.path.join(args.save_folder, out_pred_file))
+
 
 def get_forward(img_d, lab_d, crit_ce, crit_dice, model):
     logits = model(img_d)
@@ -120,13 +130,14 @@ def get_forward(img_d, lab_d, crit_ce, crit_dice, model):
     return loss_ce, loss_dice, loss, logits
 
 
-def validate(model, val_loader, device, crit_ce, crit_dice, epoch, debug=True, debug_idx=0):
+def validate(model, val_loader, device, crit_ce, crit_dice, epoch, debug=True):
     model.eval()
     avg_ce_loss = 0
     avg_dice_loss = 0
+    max_show = 20
+    num_show = 0
     for img,lab,imgfiles,swcfiles in val_loader:
         img, lab = crop_data(img, lab)
-        print(img.shape, lab.shape)
         img_d = img.to(device)
         lab_d = lab.to(device)
         
@@ -137,11 +148,17 @@ def validate(model, val_loader, device, crit_ce, crit_dice, epoch, debug=True, d
         avg_ce_loss += loss_ce
         avg_dice_loss += loss_dice
 
+        if debug and args.is_master:
+            for debug_idx in range(img.size(0)):
+                num_show += 1
+                if num_show > max_show:
+                    break
+                save_image_in_training(imgfiles, img, lab, logits, epoch, 'val', debug_idx)
+
     avg_ce_loss /= len(val_loader)
     avg_dice_loss /= len(val_loader)
     
-    if debug and args.is_master:
-        save_image_in_training(imgfiles, img, lab, logits, epoch, 'val', debug_idx)
+    
 
     model.train()
 
@@ -271,7 +288,7 @@ def train():
         # do validation
         if epoch % args.test_frequency == 0:
             ddp_print('Test on val set')
-            val_loss_ce, val_loss_dice = validate(model, val_loader, args.device, crit_ce, crit_dice, epoch, debug=debug, debug_idx=debug_idx)
+            val_loss_ce, val_loss_dice = validate(model, val_loader, args.device, crit_ce, crit_dice, epoch, debug=debug)
             ddp_print(f'[Val{epoch}] average ce loss and dice loss are {val_loss_ce:.5f}, {val_loss_dice:.5f}')
             # save the model
             if args.is_master and val_loss_dice < best_loss_dice:
