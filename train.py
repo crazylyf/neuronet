@@ -202,9 +202,8 @@ def train():
 
     # optimizer & loss
     if args.checkpoint:
-        #optimizer = torch.optim.SGD(model.parameters(), args.lr, weight_decay=args.weight_decay, momentum=args.momentum, nesterov=True)
         args.lr /= 10.
-
+    #optimizer = torch.optim.SGD(model.parameters(), args.lr, weight_decay=args.weight_decay, momentum=args.momentum, nesterov=True)
     optimizer = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay, amsgrad=True)
     crit_ce = nn.CrossEntropyLoss().to(args.device)
     crit_dice = BinaryDiceLoss(smooth=1e-5).to(args.device)
