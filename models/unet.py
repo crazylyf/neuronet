@@ -147,7 +147,8 @@ class UNet(BaseModel):
         for i in range(ndown - 1):
             x = self.ups[i](x, skip_feats[ndown-i-2])
             if i >= ndown - 1 - self.num_side_loss:
-                seg_outputs.append(self.side_projs[ndown-2-i](x))
+                proj_idx = i - (ndown - 1 - self.num_side_loss)
+                seg_outputs.append(self.side_projs[proj_idx](x))
         
         x = self.ups[ndown-1](x)
         if not self.direct_supervision:
@@ -178,7 +179,7 @@ if __name__ == '__main__':
     print('Initialize model...')
     #model = UNet(in_channels, base_num_filters, class_num, down_kernel_list, stride_list, num_side_loss, output_bias=output_bias, direct_supervision=direct_supervision)
 
-    input = torch.randn(2, configs['in_channels'], 32, 32, 32)
+    input = torch.randn(2, configs['in_channels'], 128,160,160)
     model = UNet(**configs)
     print(model)
 
