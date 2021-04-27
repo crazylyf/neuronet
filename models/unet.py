@@ -155,7 +155,7 @@ class UNet(BaseModel):
         else:
             seg_outputs.append(x)
         
-        return seg_outputs[::-1][0]
+        return seg_outputs[::-1]
 
 if __name__ == '__main__':
     import json

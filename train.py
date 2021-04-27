@@ -124,10 +124,25 @@ def save_image_in_training(imgfiles, img, lab, logits, epoch, phase, idx):
 
 def get_forward(img_d, lab_d, crit_ce, crit_dice, model):
     logits = model(img_d)
-    loss_ce = crit_ce(logits, lab_d.long())
-    loss_dice = crit_dice(logits, lab_d)
-    loss = loss_ce + loss_dice
-    return loss_ce, loss_dice, loss, logits
+    if isinstance(logits, list):
+        weights = [1./2**i for i in range(len(logits))]
+        sum_weights = sum(weights)
+        weights = [w / sum_weights for w in weights]
+    else:
+        weights = [1.]
+        logits = [logits]
+    
+    loss_ce_items, loss_dice_items = [], []
+    for i in range(len(logits)):
+        loss_ce = crit_ce(logits[i], lab_d.long())
+        loss_dice = crit_dice(logits[i], lab_d)
+        loss_ce_items.append(loss_ce.item())
+        loss_dice_items.append(loss_dice.item())
+        if i == 0:
+            loss = (loss_ce + loss_dice) * weights[i]
+        else:
+            loss += (loss_ce + loss_dice) * weights[i]
+    return loss_ce_items, loss_dice_items, loss, logits[0]
 
 
 def validate(model, val_loader, device, crit_ce, crit_dice, epoch, debug=True):
@@ -142,12 +157,12 @@ def validate(model, val_loader, device, crit_ce, crit_dice, epoch, debug=True):
         lab_d = lab.to(device)
         
         with torch.no_grad():
-            loss_ce, loss_dice, loss, logits = get_forward(img_d, lab_d, crit_ce, crit_dice, model)
+            loss_ces, loss_dices, loss, logits = get_forward(img_d, lab_d, crit_ce, crit_dice, model)
             del img_d
             del lab_d
 
-        avg_ce_loss += loss_ce.item()
-        avg_dice_loss += loss_dice.item()
+        avg_ce_loss += loss_ces[0]
+        avg_dice_loss += loss_dices[0]
 
         if debug:
             for debug_idx in range(img.size(0)):
@@ -257,7 +272,7 @@ def train():
             optimizer.zero_grad()
             if args.amp:
                 with autocast():
-                    loss_ce, loss_dice, loss, logits = get_forward(img_d, lab_d, crit_ce, crit_dice, model)
+                    loss_ces, loss_dices, loss, logits = get_forward(img_d, lab_d, crit_ce, crit_dice, model)
                     del img_d
                 grad_scaler.scale(loss).backward()
                 grad_scaler.unscale_(optimizer)
@@ -265,7 +280,7 @@ def train():
                 grad_scaler.step(optimizer)
                 grad_scaler.update()
             else:
-                loss_ce, loss_dice, loss, logits = get_forward(img_d, lab_d, crit_ce, crit_dice, model)
+                loss_ces, loss_dices, loss, logits = get_forward(img_d, lab_d, crit_ce, crit_dice, model)
                 del img_d
                 loss.backward()
                 torch.nn.utils.clip_grad_norm(model.parameters(), 12)
@@ -275,11 +290,11 @@ def train():
             #print(logits.shape, lab.shape, lab.max(), lab.min())
             
             
-            avg_loss_ce += loss_ce.item()
-            avg_loss_dice += loss_dice.item()
+            avg_loss_ce += loss_ces[0]
+            avg_loss_dice += loss_dices[0]
 
             if it % 2 == 0:
-                ddp_print(f'[{epoch}/{it}] loss_ce={loss_ce:.5f}, loss_dice={loss_dice:.5f}, time: {time.time() - t0:.4f}s')
+                ddp_print(f'[{epoch}/{it}] loss_ce={loss_ces[0]:.5f}, loss_dice={loss_dices[0]:.5f}, time: {time.time() - t0:.4f}s')
 
         avg_loss_ce /= args.step_per_epoch
         avg_loss_dice /= args.step_per_epoch
