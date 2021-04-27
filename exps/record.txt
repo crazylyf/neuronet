@@ -1,0 +1,23 @@
+exp001: small patch(64x128x128), base_feature_num=8, converged quickly, and a little bit overfitting.
+exp002: large image patch(256x512x512), base_feature_num=2, amp, use Adam optimizer, converged
+exp003: DDP, total batch_size=2(1x2). It result that 1024 seeded program does not converge..., use 1025 result convergence...
+exp004: DDP+large modified model, training image overfitted! great!
+exp005: as exp004, add training image saving support
+exp006: use all images, soma size increase from 7 to 9, updated data augmentations
+exp007: as exp006, not deterministic
+exp008: groud truth leaking test
+exp009: re-run of exp008, with model saving module
+exp010: initialized with pre-training leaking experiments(exp009). Terminated at epoch27, no significant improvement
+exp011: path_coding
+exp012: semantic segmentation on 1x3x3 downsized image
+exp013: as 12, with robust loss
+exp014: as 13, robust loss without regularization
+===== The previous swc data is not correct ========
+exp015: as 014, new data
+exp016: as 006, new data
+exp017: semantic segmentation, with lowerized augmentation, random crop
+exp018: use SGD as optimizer
+exp019: as 17, 128x160x160, validation on crop patch
+exp020: as 17, larger crop, 128,160,160, validate on whole image, noisy background
+exp021: as 20, refactored the model, discontinuous predictions
+exp022: 
