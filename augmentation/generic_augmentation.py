@@ -356,7 +356,6 @@ class RandomCrop(AbstractTransform):
                     num_trail += 1
                 else:
                     print("No foreground found after three random crops!")
-
             else:
                 shape, target_shape = get_random_shape(self.imgshape, self.crop_range, self.per_axis)
                 new_img, new_tree, new_spacing = random_crop_image_4D(img, tree, spacing, target_shape)
@@ -662,11 +661,15 @@ class InstanceAugmentation(object):
                 RandomMirror(p=p),
                 ScaleToFixedSize(1.0, imgshape),
             ])
-        elif phase == 'val' or phase == 'test':
+        elif phase == 'val':
             self.augment = Compose([
                 ConvertToFloat(),
-                #RandomCrop(1.0, imgshape, crop_range=(1,1)),
-                CenterCropKeepRatio(1.0, (192,480,480)),
+                RandomCrop(1.0, imgshape, crop_range=(1,1)),
+            ])
+        elif phase == 'test':
+            self.augment = Compose([
+                ConvertToFloat(),
+                CenterCropKeepRatio(1.0, imgshape),
                 ResizeToDividable(divid),
             ])
         else:

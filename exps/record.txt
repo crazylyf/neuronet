@@ -12,7 +12,7 @@ exp011: path_coding
 exp012: semantic segmentation on 1x3x3 downsized image
 exp013: as 12, with robust loss
 exp014: as 13, robust loss without regularization
-===== The previous swc data is not correct ========
+===== The previous swc data is not correct (1 pixel mismatch) ========
 exp015: as 014, new data
 exp016: as 006, new data
 exp017: semantic segmentation, with lowerized augmentation, random crop
@@ -20,4 +20,7 @@ exp018: use SGD as optimizer
 exp019: as 17, 128x160x160, validation on crop patch
 exp020: as 17, larger crop, 128,160,160, validate on whole image, noisy background
 exp021: as 20, refactored the model, discontinuous predictions
-exp022: 
+exp022: add 1 side loss for sec-last output layer
+exp023: two side loss
+exp024: foreground oversampling along with 1 side loss
+

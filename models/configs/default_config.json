@@ -4,7 +4,7 @@
 "class_num": 2,
 "down_kernel_list": [[1,3,3], [3,3,3], [3,3,3], [3,3,3], [3,3,3]],
 "stride_list": [[1,2,2], [2,2,2], [2,2,2], [2,2,2], [2,2,2]],
-"num_side_loss": 2, 
+"num_side_loss": 1, 
 "output_bias": false,
 "direct_supervision": false
 }

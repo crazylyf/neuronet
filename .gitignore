@@ -1,6 +1,5 @@
 data/
-exps/
-
+exps/**/
 **/__pycache__
 **/*.pyc
 **/*.pyd

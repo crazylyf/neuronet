@@ -66,12 +66,16 @@ parser.add_argument('--deterministic', action='store_true',
                     help='run in deterministic mode')
 parser.add_argument('--test_frequency', default=3, type=int,
                     help='frequency of testing')
+parser.add_argument('--print_frequency', default=5, type=int,
+                    help='frequency of information logging')
 parser.add_argument('--local_rank', default=-1, type=int, metavar='N', 
                     help='Local process rank')  # DDP required
 parser.add_argument('--seed', default=1025, type=int,
                     help='Random seed value')
 parser.add_argument('--checkpoint', default='', type=str,
                     help='Saved checkpoint')
+parser.add_argument('--evaluation', action='store_true',
+                    help='evaluation')
 # network specific
 parser.add_argument('--net_config', default="./models/configs/default_config.json",
                     type=str,
@@ -145,17 +149,19 @@ def get_forward(img_d, lab_d, crit_ce, crit_dice, model):
     return loss_ce_items, loss_dice_items, loss, logits[0]
 
 
-def validate(model, val_loader, device, crit_ce, crit_dice, epoch, debug=True):
+def validate(model, val_loader, crit_ce, crit_dice, epoch, debug=True, num_image_save=10):
     model.eval()
     avg_ce_loss = 0
     avg_dice_loss = 0
-    max_show = 10
-    num_show = 0
+    num_saved = 0
+    if num_image_save == -1:
+        num_image_save = 999
+
     for img,lab,imgfiles,swcfiles in val_loader:
         img, lab = crop_data(img, lab)
-        img_d = img.to(device)
-        lab_d = lab.to(device)
-        
+        img_d = img.to(args.device)
+        lab_d = lab.to(args.device)
+     
         with torch.no_grad():
             loss_ces, loss_dices, loss, logits = get_forward(img_d, lab_d, crit_ce, crit_dice, model)
             del img_d
@@ -166,82 +172,46 @@ def validate(model, val_loader, device, crit_ce, crit_dice, epoch, debug=True):
 
         if debug:
             for debug_idx in range(img.size(0)):
-                num_show += 1
-                if num_show > max_show:
+                num_saved += 1
+                if num_saved > num_image_save:
                     break
                 save_image_in_training(imgfiles, img, lab, logits, epoch, 'val', debug_idx)
 
     avg_ce_loss /= len(val_loader)
     avg_dice_loss /= len(val_loader)
     
-    model.train()
-
     return avg_ce_loss, avg_dice_loss
 
-def train():
-
-    if args.deterministic:
-        util.set_deterministic(deterministic=True, seed=args.seed)
-
-    # for output folder
-    if args.is_master and not os.path.exists(args.save_folder):
-        os.mkdir(args.save_folder)
-
-    # dataset preparing
-    imgshape = tuple(map(int, args.image_shape.split(',')))
-    train_set = GenericDataset(args.data_file, phase='train', imgshape=imgshape)
-    val_set = GenericDataset(args.data_file, phase='val', imgshape=imgshape)
-    ddp_print(f'Number of train and val samples: {len(train_set)}, {len(val_set)}')
+def load_dataset(phase, imgshape):
+    dset = GenericDataset(args.data_file, phase=phase, imgshape=imgshape)
+    ddp_print(f'Number of {phase} samples: {len(dset)}')
     # distributedSampler
-    train_sampler = DistributedSampler(train_set, shuffle=True)
-    val_sampler = DistributedSampler(val_set, shuffle=False)
+    if phase == 'train':
+        sampler = DistributedSampler(dset, shuffle=True)
+    else:
+        sampler = DistributedSampler(dset, shuffle=False)
 
-    train_loader = tudata.DataLoader(train_set, args.batch_size, 
-                                    num_workers=args.num_workers, 
-                                    shuffle=False, pin_memory=True, 
-                                    sampler=train_sampler,
-                                    drop_last=True, 
-                                    worker_init_fn=util.worker_init_fn)
-    val_loader = tudata.DataLoader(val_set, args.batch_size, 
-                                    num_workers=args.num_workers, 
-                                    sampler=val_sampler,
-                                    shuffle=False, pin_memory=True,
-                                    drop_last=True, 
-                                    worker_init_fn=util.worker_init_fn)
-    train_iter = iter(train_loader)
-    val_iter = iter(val_loader)
+    loader = tudata.DataLoader(dset, args.batch_size, 
+                                num_workers=args.num_workers, 
+                                shuffle=False, pin_memory=True, 
+                                sampler=sampler,
+                                drop_last=True, 
+                                worker_init_fn=util.worker_init_fn)
+    dset_iter = iter(loader)
+    return loader, dset_iter
 
-    # network initialization
-    with open(args.net_config) as fp:
-        net_configs = json.load(fp)
-        model = unet.UNet(**net_configs)
-        ddp_print('\n' + '='*10 + 'Network Structure' + '='*10)
-        ddp_print(model)
-        ddp_print('='*30 + '\n')
+def evaluate(model, optimizer, crit_ce, crit_dice, imgshape):
+    val_loader, val_iter = load_dataset('test', imgshape)
+    loss_ce, loss_dice = validate(model, val_loader, crit_ce, crit_dice, epoch=0, debug=True, num_image_save=10)
+    print(f'Average loss_ce and loss_dice: {loss_ce:.5f} {loss_dice:.5f}')
 
-    #import ipdb; ipdb.set_trace()
-    model = model.to(args.device)
-    if args.checkpoint:
-        # load checkpoint
-        print(f'Loading checkpoint: {args.checkpoint}')
-        checkpoint = torch.load(args.checkpoint, map_location={'cuda:0':f'cuda:{args.local_rank}'})
-        model.load_state_dict(checkpoint.module.state_dict())
+def train(model, optimizer, crit_ce, crit_dice, imgshape):
+    # dataset preparing
+    train_loader, train_iter = load_dataset('train', imgshape)
+    val_loader, val_iter = load_dataset('val', imgshape)
     
-    # convert to distributed data parallel model
-    model = DDP(model, device_ids=[args.local_rank],
-                output_device=args.local_rank, find_unused_parameters=True)
-
-    # optimizer & loss
-    if args.checkpoint:
-        args.lr /= 10.
-    #optimizer = torch.optim.SGD(model.parameters(), args.lr, weight_decay=args.weight_decay, momentum=args.momentum, nesterov=True)
-    optimizer = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay, amsgrad=True)
-    crit_ce = nn.CrossEntropyLoss().to(args.device)
-    crit_dice = BinaryDiceLoss(smooth=1e-5).to(args.device)
-
     # training process
     model.train()
-
     
     t0 = time.time()
     grad_scaler = GradScaler()
@@ -286,33 +256,31 @@ def train():
                 torch.nn.utils.clip_grad_norm(model.parameters(), 12)
                 optimizer.step()
 
-            ddp_print(f'Temp: {logits[:,0].min().item(), logits[:,0].max().item(), logits[:,1].min().item(), logits[:,1].max().item()}')
-            #print(logits.shape, lab.shape, lab.max(), lab.min())
-            
-            
             avg_loss_ce += loss_ces[0]
             avg_loss_dice += loss_dices[0]
 
-            if it % 2 == 0:
+            # train statistics for bebug afterward
+            if it % args.print_frequency == 0:
                 ddp_print(f'[{epoch}/{it}] loss_ce={loss_ces[0]:.5f}, loss_dice={loss_dices[0]:.5f}, time: {time.time() - t0:.4f}s')
+                ddp_print(f'----> [{it}] Logits info: {logits[:,0].min().item():.5f}, {logits[:,0].max().item():.5f}, {logits[:,1].min().item():.5f}, {logits[:,1].max().item():.5f}')
 
         avg_loss_ce /= args.step_per_epoch
         avg_loss_dice /= args.step_per_epoch
 
         # do validation
         if epoch % args.test_frequency == 0:
-            ddp_print('Test on val set')
-            val_loss_ce, val_loss_dice = validate(model, val_loader, args.device, crit_ce, crit_dice, epoch, debug=debug)
+            ddp_print('Evaluate on val set')
+            val_loss_ce, val_loss_dice = validate(model, val_loader, crit_ce, crit_dice, epoch, debug=debug)
+            model.train()   # back to train phase
             ddp_print(f'[Val{epoch}] average ce loss and dice loss are {val_loss_ce:.5f}, {val_loss_dice:.5f}')
             # save the model
             if args.is_master and val_loss_dice < best_loss_dice:
                 best_loss_dice = val_loss_dice
                 print(f'Saving the model at epoch {epoch} with dice loss {best_loss_dice:.4f}')
                 torch.save(model, os.path.join(args.save_folder, 'best_model.pt'))
-                
 
         # save image for subsequent analysis
-        if debug and args.is_master:
+        if debug and args.is_master and epoch % args.test_frequency == 0:
             save_image_in_training(imgfiles, img, lab, logits, epoch, 'train', debug_idx)
 
         # learning rate decay
@@ -333,7 +301,51 @@ def main():
     distrib.init_process_group(backend='nccl', init_method='env://')
     torch.cuda.set_device(args.local_rank)
 
-    train()
+    if args.deterministic:
+        util.set_deterministic(deterministic=True, seed=args.seed)
+
+    # for output folder
+    if args.is_master and not os.path.exists(args.save_folder):
+        os.mkdir(args.save_folder)
+
+    # Network
+    with open(args.net_config) as fp:
+        net_configs = json.load(fp)
+        model = unet.UNet(**net_configs)
+        ddp_print('\n' + '='*10 + 'Network Structure' + '='*10)
+        ddp_print(model)
+        ddp_print('='*30 + '\n')
+
+    model = model.to(args.device)
+    if args.checkpoint:
+        # load checkpoint
+        print(f'Loading checkpoint: {args.checkpoint}')
+        checkpoint = torch.load(args.checkpoint, map_location={'cuda:0':f'cuda:{args.local_rank}'})
+        model.load_state_dict(checkpoint.module.state_dict())
+        del checkpoint
+    
+    # convert to distributed data parallel model
+    model = DDP(model, device_ids=[args.local_rank],
+                output_device=args.local_rank, find_unused_parameters=True)
+
+    # optimizer & loss
+    if args.checkpoint:
+        args.lr /= 5
+        # note: SGD is thought always better than Adam if training time
+        # is long enough
+        #optimizer = torch.optim.SGD(model.parameters(), args.lr, weight_decay=args.weight_decay, momentum=args.momentum, nesterov=True)
+        optimizer = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay, amsgrad=True)
+    else:
+        optimizer = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay, amsgrad=True)
+    crit_ce = nn.CrossEntropyLoss().to(args.device)
+    crit_dice = BinaryDiceLoss(smooth=1e-5).to(args.device)
+
+    imgshape = tuple(map(int, args.image_shape.split(',')))
+ 
+    if args.evaluation:
+        evaluate(model, optimizer, crit_ce, crit_dice, imgshape)
+    else:
+        train(model, optimizer, crit_ce, crit_dice, imgshape)
 
 if __name__ == '__main__':
     main()
