@@ -318,6 +318,51 @@ class RandomCrop(AbstractTransform):
         img, tree, spacing = random_crop_image_4D(img, tree, spacing, target_shape)
         return img, tree, spacing       
 
+class RandomCrop(AbstractTransform):
+    def __init__(self, p=0.5, imgshape=None, crop_range=(0.85, 1), per_axis=True, force_fg_sampling=False):
+        super(RandomCrop, self).__init__(p)
+        self.imgshape = imgshape
+        self.crop_range = crop_range
+        self.per_axis = per_axis
+        self.force_fg_sampling = force_fg_sampling
+
+    def __call__(self, img, tree=None, spacing=None):
+        if np.random.random() > self.p:
+            return img, tree, spacing
+
+        if self.crop_range[0] == self.crop_range[1]:
+            target_shape = self.imgshape
+            img, tree, spacing = random_crop_image_4D(img, tree, spacing, target_shape)
+            return img, tree, spacing
+        else:
+            if self.force_fg_sampling:
+                num_trail = 0
+                while num_trail < 3:
+                    shape, target_shape = get_random_shape(self.imgshape, self.crop_range, self.per_axis)
+                    new_img, new_tree, new_spacing = random_crop_image_4D(img, tree, spacing, target_shape)
+                    # check foreground existence
+                    has_fg = False
+                    for leaf in new_tree:
+                        x,y,z = leaf[2:5]
+                        if x >= 0 and y >= 0 and z >= 0 and\
+                            x < target_shape[2] and \
+                            y < target_shape[1] and \
+                            z < target_shape[0]:
+                            has_fg = True
+                            break
+                    if has_fg:
+                        break
+
+                    num_trail += 1
+                else:
+                    print("No foreground found after three random crops!")
+
+            else:
+                shape, target_shape = get_random_shape(self.imgshape, self.crop_range, self.per_axis)
+                new_img, new_tree, new_spacing = random_crop_image_4D(img, tree, spacing, target_shape)
+        
+            return new_img, new_tree, new_spacing
+
 #verified
 class RandomCenterCrop(AbstractTransform):
     def __init__(self, p=1.0, reference_shape=None, max_aniso_scale=1.2):
