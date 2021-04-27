@@ -17,7 +17,7 @@ from copy import deepcopy
 class ConvDropoutNormNonlin(nn.Module):
     def __init__(self, input_channels, output_channels, 
                  conv_op=nn.Conv3d, conv_kwargs=None,
-                 norm_op=nn.BatchNorm3d, norm_op_kwargs=None,
+                 norm_op=nn.InstanceNorm3d, norm_op_kwargs=None,
                  dropout_op=nn.Dropout3d, dropout_op_kwargs=None,
                  nonlin=nn.LeakyReLU, nonlin_kwargs=None):
         super(ConvDropoutNormNonlin, self).__init__()
@@ -65,9 +65,9 @@ class ConvDropoutNonlinNorm(ConvDropoutNormNonlin):
 
 class StackedConvLayers(nn.Module):
     def __init__(self, input_feature_channels, output_feature_channels, num_convs,
-                 conv_op=nn.Conv2d, conv_kwargs=None,
-                 norm_op=nn.BatchNorm2d, norm_op_kwargs=None,
-                 dropout_op=nn.Dropout2d, dropout_op_kwargs=None,
+                 conv_op=nn.Conv3d, conv_kwargs=None,
+                 norm_op=nn.InstanceNorm3d, norm_op_kwargs=None,
+                 dropout_op=nn.Dropout3d, dropout_op_kwargs=None,
                  nonlin=nn.LeakyReLU, nonlin_kwargs=None, first_stride=None, basic_block=ConvDropoutNormNonlin):
         '''
         stacks ConvDropoutNormLReLU layers. initial_stride will only be applied to first layer in the stack. The other parameters affect all layers
