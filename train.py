@@ -134,7 +134,7 @@ def validate(model, val_loader, device, crit_ce, crit_dice, epoch, debug=True):
     model.eval()
     avg_ce_loss = 0
     avg_dice_loss = 0
-    max_show = 20
+    max_show = 10
     num_show = 0
     for img,lab,imgfiles,swcfiles in val_loader:
         img, lab = crop_data(img, lab)
@@ -144,11 +144,12 @@ def validate(model, val_loader, device, crit_ce, crit_dice, epoch, debug=True):
         with torch.no_grad():
             loss_ce, loss_dice, loss, logits = get_forward(img_d, lab_d, crit_ce, crit_dice, model)
             del img_d
+            del lab_d
 
-        avg_ce_loss += loss_ce
-        avg_dice_loss += loss_dice
+        avg_ce_loss += loss_ce.item()
+        avg_dice_loss += loss_dice.item()
 
-        if debug and args.is_master:
+        if debug:
             for debug_idx in range(img.size(0)):
                 num_show += 1
                 if num_show > max_show:
@@ -158,8 +159,6 @@ def validate(model, val_loader, device, crit_ce, crit_dice, epoch, debug=True):
     avg_ce_loss /= len(val_loader)
     avg_dice_loss /= len(val_loader)
     
-    
-
     model.train()
 
     return avg_ce_loss, avg_dice_loss

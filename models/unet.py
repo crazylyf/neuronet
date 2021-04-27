@@ -19,8 +19,9 @@ from neuronet.models.base_model import BaseModel
 from neuronet.models.modules.modules import Upsample, ConvDropoutNormNonlin, InitWeights_He, StackedConvLayers
 
 class UpBlock(nn.Module):
-    def __init__(self, up_in_channels, in_channels=None, out_channels=None, up_stride=(2,2,2)):
+    def __init__(self, up_in_channels, in_channels=None, out_channels=None, up_stride=(2,2,2), has_nonlin=True):
         super(UpBlock, self).__init__()
+        self.has_nonlin = has_nonlin
         self.up = nn.ConvTranspose3d(up_in_channels, out_channels, up_stride, stride=up_stride)
 
         if in_channels is None:
@@ -28,15 +29,17 @@ class UpBlock(nn.Module):
             self.skip_input = False
         else:
             self.skip_input = True
-            conv_in_channels = up_in_channels + out_channels        
+            conv_in_channels = out_channels + in_channels
 
-        self.conv = ConvDropoutNormNonlin(conv_in_channels, out_channels)
+        if has_nonlin:
+            self.conv = ConvDropoutNormNonlin(conv_in_channels, out_channels)
 
     def forward(self, x, x_skip=None):
         x = self.up(x)
         if x_skip is not None and self.skip_input:
             x = torch.cat((x, x_skip), dim=1)
-        x = self.conv(x)
+        if self.has_nonlin:
+            x = self.conv(x)
 
         return x
 
@@ -70,6 +73,9 @@ class UNet(BaseModel):
         assert len(down_kernel_list) == len(stride_list)
         self.downs = []
         self.num_side_loss = num_side_loss
+        # if direct_supervision turned on, no nonlinear or reprojection 
+        # for the highest resolution image, and the side loss must
+        # add additional nonlinear reprojection.
         self.direct_supervision = direct_supervision
 
         out_channels = base_num_filters
@@ -95,10 +101,12 @@ class UNet(BaseModel):
             stride = stride_list[i]
             if i == 0:
                 if direct_supervision:
-                    final_channels = 2
+                    final_channels = class_num
+                    has_nonlin = False
                 else:
-                    final_channels = up_in_channels // 2
-                self.ups.append(UpBlock(up_in_channels, None, final_channels, up_stride=stride))
+                    final_channels = min(up_in_channels // 2, 2 * class_num)
+                    has_nonlin = True
+                self.ups.append(UpBlock(up_in_channels, None, final_channels, up_stride=stride, has_nonlin=has_nonlin))
             else:
                 self.ups.append(UpBlock(up_in_channels, in_channels, out_channels, up_stride=stride))
 
@@ -147,21 +155,35 @@ class UNet(BaseModel):
         else:
             seg_outputs.append(x)
         
-        return seg_outputs[::-1]    
+        return seg_outputs[::-1][0]
 
 if __name__ == '__main__':
-    in_channels = 1
+    import json
+    from torchinfo import summary
+
+    """in_channels = 1
     base_num_filters = 16
     class_num = 2
     down_kernel_list = [[1,3,3], [3,3,3], [3,3,3], [3,3,3], [3,3,3]]
     stride_list = [[1,2,2], [2,2,2], [2,2,2], [2,2,2], [2,2,2]]
     num_side_loss = 1
     output_bias = False
-    direct_supervision = True
-    input = torch.randn(2, in_channels, 32, 32, 32)
+    direct_supervision = False
+    """
     
+
+    conf_file = 'configs/default_config.json'
+    with open(conf_file) as fp:
+        configs = json.load(fp)
     print('Initialize model...')
-    model = UNet(in_channels, base_num_filters, class_num, down_kernel_list, stride_list, num_side_loss, output_bias=output_bias, direct_supervision=direct_supervision)
+    #model = UNet(in_channels, base_num_filters, class_num, down_kernel_list, stride_list, num_side_loss, output_bias=output_bias, direct_supervision=direct_supervision)
+
+    input = torch.randn(2, configs['in_channels'], 32, 32, 32)
+    model = UNet(**configs)
+    print(model)
+
     outputs = model(input)
     for output in outputs:
         print('output size: ', output.size())
+
+    summary(model, input_size=(2,1,128,160,160))

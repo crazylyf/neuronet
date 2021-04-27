@@ -349,7 +349,7 @@ class RandomCenterCrop(AbstractTransform):
             for leaf in tree:
                 idx, type_, x, y, z, r, p = leaf
                 x = x - sx
-                y = y - sy
+                y = y - target_shape[1] - (img.shape[2] - y - sy)
                 z = z - sz
                 new_tree.append((idx,type_,x,y,z,r,p))
             return img, new_tree, spacing
@@ -357,9 +357,9 @@ class RandomCenterCrop(AbstractTransform):
             return img, tree, spacing
 
 # verified
-class CenterCrop(AbstractTransform):
+class CenterCropKeepRatio(AbstractTransform):
     def __init__(self, p=1.0, reference_shape=None):
-        super(CenterCrop, self).__init__(p)
+        super(CenterCropKeepRatio, self).__init__(p)
         self.reference_shape = reference_shape
 
     def __call__(self, img, tree=None, spacing=None):
@@ -380,7 +380,34 @@ class CenterCrop(AbstractTransform):
             for leaf in tree:
                 idx, type_, x, y, z, r, p = leaf
                 x = x - sx
-                y = y - sy
+                y = target_shape[1] - (img.shape[2] - y - sy)
+                z = z - sz
+                new_tree.append((idx,type_,x,y,z,r,p))
+            return img, new_tree, spacing
+        else:
+            return img, tree, spacing
+
+class CenterCrop(AbstractTransform):
+    def __init__(self, p=1.0, reference_shape=None):
+        super(CenterCrop, self).__init__(p)
+        self.reference_shape = reference_shape
+
+    def __call__(self, img, tree=None, spacing=None):
+        if np.random.random() > self.p:
+            return img, tree, spacing
+
+        shape = np.array(img[0].shape)
+        target_shape = np.array(self.reference_shape)
+        # do center cropping
+        sz,sy,sx = (shape - target_shape) // 2
+        img = img[:,sz:sz+target_shape[0],sy:sy+target_shape[1],sx:sx+target_shape[2]]
+        
+        if tree is not None:
+            new_tree = []
+            for leaf in tree:
+                idx, type_, x, y, z, r, p = leaf
+                x = x - sx
+                y = target_shape[1] - (img.shape[2] - y - sy)
                 z = z - sz
                 new_tree.append((idx,type_,x,y,z,r,p))
             return img, new_tree, spacing
@@ -594,6 +621,7 @@ class InstanceAugmentation(object):
             self.augment = Compose([
                 ConvertToFloat(),
                 #RandomCrop(1.0, imgshape, crop_range=(1,1)),
+                CenterCropKeepRatio(1.0, (192,480,480)),
                 ResizeToDividable(divid),
             ])
         else:
