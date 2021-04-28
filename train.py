@@ -181,8 +181,13 @@ def validate(model, val_loader, crit_ce, crit_dice, epoch, debug=True, num_image
         img_d = img.to(args.device)
         lab_d = lab.to(args.device)
      
-        with torch.no_grad():
-            loss_ces, loss_dices, loss, logits = get_forward(img_d, lab_d, crit_ce, crit_dice, model)
+        if args.amp:
+            with autocast():
+                with torch.no_grad():
+                    loss_ces, loss_dices, loss, logits = get_forward(img_d, lab_d, crit_ce, crit_dice, model)
+        else:
+            with torch.no_grad():
+                loss_ces, loss_dices, loss, logits = get_forward(img_d, lab_d, crit_ce, crit_dice, model)
 
         del img_d
         del lab_d
