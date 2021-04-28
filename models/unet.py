@@ -78,7 +78,14 @@ class UNet(BaseModel):
         # add additional nonlinear reprojection.
         self.direct_supervision = direct_supervision
 
-        out_channels = base_num_filters
+        # the first layer to process the input image
+        self.pre_layer = nn.Sequential(
+            ConvDropoutNormNonlin(in_channels, base_num_filters),
+            ConvDropoutNormNonlin(base_num_filters, base_num_filters),
+        )
+
+        in_channels = base_num_filters
+        out_channels = 2 * base_num_filters
         down_filters = []
         for i in range(len(down_kernel_list)):
             down_kernel = down_kernel_list[i]
@@ -134,6 +141,8 @@ class UNet(BaseModel):
         self.side_projs = nn.ModuleList(self.side_projs)
             
     def forward(self, x):
+        x = self.pre_layer(x)
+
         skip_feats = []
         ndown = len(self.downs)
         for i in range(ndown - 1):
