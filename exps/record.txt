@@ -23,4 +23,5 @@ exp021: as 20, refactored the model, discontinuous predictions
 exp022: add 1 side loss for sec-last output layer
 exp023: two side loss
 exp024: foreground oversampling along with 1 side loss
-
+exp025: as 022, use robust loss, training from scratch
+exp026: as 025, finetuning from exp022
