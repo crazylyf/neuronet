@@ -170,12 +170,11 @@ def get_forward(img_d, lab_d, crit_ce, crit_dice, model):
 
 def validate(model, val_loader, crit_ce, crit_dice, epoch, debug=True, num_image_save=10, phase='val'):
     model.eval()
-    avg_ce_loss = 0
-    avg_dice_loss = 0
     num_saved = 0
     if num_image_save == -1:
         num_image_save = 999
 
+    losses = []
     for img,lab,imgfiles,swcfiles in val_loader:
         img, lab = crop_data(img, lab)
         img_d = img.to(args.device)
@@ -192,8 +191,7 @@ def validate(model, val_loader, crit_ce, crit_dice, epoch, debug=True, num_image
         del img_d
         del lab_d
 
-        avg_ce_loss += loss_ces[0]
-        avg_dice_loss += loss_dices[0]
+        losses.append([loss_ces[0], loss_dices[0], loss.item()])
 
         if debug:
             for debug_idx in range(img.size(0)):
@@ -202,10 +200,11 @@ def validate(model, val_loader, crit_ce, crit_dice, epoch, debug=True, num_image
                     break
                 save_image_in_training(imgfiles, img, lab, logits, epoch, phase, debug_idx)
 
-    avg_ce_loss /= len(val_loader)
-    avg_dice_loss /= len(val_loader)
+    losses = torch.from_numpy(losses).to(args.device)
+    dist.all_reduce(losses, op=dist.ReduceOp.SUM)
+    losses = losses.mean(dim=0) / dist.get_world_size()
     
-    return avg_ce_loss, avg_dice_loss
+    return losses
 
 def load_dataset(phase, imgshape):
     dset = GenericDataset(args.data_file, phase=phase, imgshape=imgshape)
@@ -228,7 +227,7 @@ def load_dataset(phase, imgshape):
 def evaluate(model, optimizer, crit_ce, crit_dice, imgshape):
     phase = 'test'
     val_loader, val_iter = load_dataset(phase, imgshape)
-    loss_ce, loss_dice = validate(model, val_loader, crit_ce, crit_dice, epoch=0, debug=True, num_image_save=10, phase=phase)
+    loss_ce, loss_dice, loss = validate(model, val_loader, crit_ce, crit_dice, epoch=0, debug=True, num_image_save=10, phase=phase)
     print(f'Average loss_ce and loss_dice: {loss_ce:.5f} {loss_dice:.5f}')
 
 def train(model, optimizer, crit_ce, crit_dice, imgshape):
@@ -296,7 +295,7 @@ def train(model, optimizer, crit_ce, crit_dice, imgshape):
         # do validation
         if epoch % args.test_frequency == 0:
             ddp_print('Evaluate on val set')
-            val_loss_ce, val_loss_dice = validate(model, val_loader, crit_ce, crit_dice, epoch, debug=debug, phase='val')
+            val_loss_ce, val_loss_dice, val_loss = validate(model, val_loader, crit_ce, crit_dice, epoch, debug=debug, phase='val')
             model.train()   # back to train phase
             ddp_print(f'[Val{epoch}] average ce loss and dice loss are {val_loss_ce:.5f}, {val_loss_dice:.5f}')
             # save the model
@@ -362,7 +361,8 @@ def main():
         #optimizer = torch.optim.SGD(model.parameters(), args.lr, weight_decay=args.weight_decay, momentum=args.momentum, nesterov=True)
         optimizer = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay, amsgrad=True)
     else:
-        optimizer = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay, amsgrad=True)
+        #optimizer = torch.optim.Adam(model.parameters(), args.lr, weight_decay=args.weight_decay, amsgrad=True)
+        optimizer = torch.optim.SGD(model.parameters(), args.lr, weight_decay=args.weight_decay, momentum=args.momentum, nesterov=True)
     crit_ce = nn.CrossEntropyLoss(reduction='none').to(args.device)
     crit_dice = BinaryDiceLoss(smooth=1e-5, input_logits=False).to(args.device)
 

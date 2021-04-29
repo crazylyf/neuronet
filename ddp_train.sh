@@ -10,7 +10,7 @@
 #
 #================================================================
 
-exp_folder="exps/exp027"
+exp_folder="exps/exp029"
 mkdir -p $exp_folder
 #CUDA_VISIBLE_DEVICES=0 nohup python -u train.py --deterministic --max_epochs 50 --save_folder ${exp_folder} --amp > ${exp_folder}/fullsize_adam.log &
 
@@ -28,7 +28,7 @@ python -u -m torch.distributed.launch \
     --node_rank $NODE_RANK \
     train.py \
     --deterministic \
-    --max_epochs 100 \
+    --max_epochs 1000 \
     --save_folder ${exp_folder} \
     --amp \
     --step_per_epoch 200 \

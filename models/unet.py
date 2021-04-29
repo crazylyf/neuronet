@@ -32,7 +32,9 @@ class UpBlock(nn.Module):
             conv_in_channels = out_channels + in_channels
 
         if has_nonlin:
-            self.conv = ConvDropoutNormNonlin(conv_in_channels, out_channels)
+            self.conv = nn.Sequential(
+                    ConvDropoutNormNonlin(conv_in_channels, out_channels), 
+                    ConvDropoutNormNonlin(out_channels, out_channels))
 
     def forward(self, x, x_skip=None):
         x = self.up(x)
@@ -111,7 +113,7 @@ class UNet(BaseModel):
                     final_channels = class_num
                     has_nonlin = False
                 else:
-                    final_channels = min(up_in_channels // 2, 2 * class_num)
+                    final_channels = min(up_in_channels // 2, 8 * class_num)
                     has_nonlin = True
                 self.ups.append(UpBlock(up_in_channels, None, final_channels, up_stride=stride, has_nonlin=has_nonlin))
             else:
