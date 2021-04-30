@@ -670,7 +670,7 @@ class InstanceAugmentation(object):
             self.augment = Compose([
                 ConvertToFloat(),
                 #CenterCropKeepRatio(1.0, imgshape),
-                #ResizeToDividable(divid),
+                ResizeToDividable(divid),
             ])
         else:
             raise NotImplementedError

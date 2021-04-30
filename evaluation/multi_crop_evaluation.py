@@ -153,6 +153,7 @@ class MostFitCropEvaluation(GenericMultiCropEvaluation):
             else:
                 padding.append(0)
                 padding.append(0)
+        #print(padding)
 
         # NOTE: for multi-modulity image, this may problematic!! to be fixed later
         pad_value = self.get_pad_value(img)

@@ -185,8 +185,9 @@ def validate(model, val_loader, crit_ce, crit_dice, epoch, debug=True, num_image
         num_image_save = 999
 
     if phase == 'test':
-        from neuronet.evaluation.multi_crop_evaluation import NonOverlapCropEvaluation
-        noce = NonOverlapCropEvaluation(args.imgshape, args.ds_ratios)
+        from neuronet.evaluation.multi_crop_evaluation import NonOverlapCropEvaluation, MostFitCropEvaluation
+        
+        noce = MostFitCropEvaluation(args.imgshape, args.ds_ratios)
 
         assert args.batch_size == 1, "Batch size must be 1 for test phase for current version"
 
