@@ -25,4 +25,7 @@ exp023: two side loss
 exp024: foreground oversampling along with 1 side loss
 exp025: as 022, use robust loss, training from scratch
 exp026: as 22, base_num_filters=32, test for large image
-
+exp027: noFastDownsizing
+exp028: unlabelled soma
+exp029: SGD + noFastDownsizing + 1000 epoch
+exp030: re-run exp029 with final model saving, maximal 500 epochs

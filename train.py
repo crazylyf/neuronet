@@ -167,6 +167,16 @@ def get_forward(img_d, lab_d, crit_ce, crit_dice, model):
             loss += (loss_ce + loss_dice) * weights[i]
     return loss_ce_items, loss_dice_items, loss, logits[0]
 
+def get_forward_eval(img_d, lab_d, crit_ce, crit_dice, model):
+    if args.amp:
+        with autocast():
+            with torch.no_grad():
+                loss_ces, loss_dices, loss, logits = get_forward(img_d, lab_d, crit_ce, crit_dice, model)
+    else:
+        with torch.no_grad():
+            loss_ces, loss_dices, loss, logits = get_forward(img_d, lab_d, crit_ce, crit_dice, model)
+    return loss_ces, loss_dices, loss, logits
+
 
 def validate(model, val_loader, crit_ce, crit_dice, epoch, debug=True, num_image_save=10, phase='val'):
     model.eval()
@@ -174,19 +184,45 @@ def validate(model, val_loader, crit_ce, crit_dice, epoch, debug=True, num_image
     if num_image_save == -1:
         num_image_save = 999
 
+    if phase == 'test':
+        from neuronet.evaluation.multi_crop_evaluation import NonOverlapCropEvaluation
+        noce = NonOverlapCropEvaluation(args.imgshape, args.ds_ratios)
+
+        assert args.batch_size == 1, "Batch size must be 1 for test phase for current version"
+
     losses = []
+    processed = -1
     for img,lab,imgfiles,swcfiles in val_loader:
+        processed += 1
+        ddp_print(f'==> processed: {processed}')
+
         img, lab = crop_data(img, lab)
         img_d = img.to(args.device)
         lab_d = lab.to(args.device)
-     
-        if args.amp:
-            with autocast():
-                with torch.no_grad():
-                    loss_ces, loss_dices, loss, logits = get_forward(img_d, lab_d, crit_ce, crit_dice, model)
+        if phase == 'val':
+            loss_ces, loss_dices, loss, logits = get_forward_eval(img_d, lab_d, crit_ce, crit_dice, model)
+        elif phase == 'test':
+            crops, crop_sizes, lab_crops = noce.get_image_crops(img_d[0], lab_d[0])
+            logits_list = []
+            loss_ces, loss_dices, loss = [], [], 0
+            for i in range(len(crops)):
+                loss_ces_i, loss_dices_i, loss_i, logits_i = get_forward_eval(crops[i][None], lab_crops[i][None], crit_ce, crit_dice, model)
+                logits_list.append(logits_i[0])
+                loss_ces.append(loss_ces_i)
+                loss_dices.append(loss_dices_i)
+                loss += loss_i
+
+            # merge the crop of prediction to unit one
+            logits = noce.get_pred_from_crops(lab_d[0].shape, logits_list, crop_sizes)[None]
+            ncrop = len(crops)
+            del crops, lab_crops, logits_list
+
+            # average the loss
+            loss_ces = np.array(loss_ces).mean(axis=0)
+            loss_dices = np.array(loss_dices).mean(axis=0)
+            loss /= ncrop
         else:
-            with torch.no_grad():
-                loss_ces, loss_dices, loss, logits = get_forward(img_d, lab_d, crit_ce, crit_dice, model)
+            raise ValueError
 
         del img_d
         del lab_d
@@ -200,9 +236,9 @@ def validate(model, val_loader, crit_ce, crit_dice, epoch, debug=True, num_image
                     break
                 save_image_in_training(imgfiles, img, lab, logits, epoch, phase, debug_idx)
 
-    losses = torch.from_numpy(losses).to(args.device)
-    dist.all_reduce(losses, op=dist.ReduceOp.SUM)
-    losses = losses.mean(dim=0) / dist.get_world_size()
+    losses = torch.from_numpy(np.array(losses)).to(args.device)
+    distrib.all_reduce(losses, op=distrib.ReduceOp.SUM)
+    losses = losses.mean(dim=0) / distrib.get_world_size()
     
     return losses
 
@@ -228,7 +264,7 @@ def evaluate(model, optimizer, crit_ce, crit_dice, imgshape):
     phase = 'test'
     val_loader, val_iter = load_dataset(phase, imgshape)
     loss_ce, loss_dice, loss = validate(model, val_loader, crit_ce, crit_dice, epoch=0, debug=True, num_image_save=10, phase=phase)
-    print(f'Average loss_ce and loss_dice: {loss_ce:.5f} {loss_dice:.5f}')
+    ddp_print(f'Average loss_ce and loss_dice: {loss_ce:.5f} {loss_dice:.5f}')
 
 def train(model, optimizer, crit_ce, crit_dice, imgshape):
     # dataset preparing
@@ -299,10 +335,15 @@ def train(model, optimizer, crit_ce, crit_dice, imgshape):
             model.train()   # back to train phase
             ddp_print(f'[Val{epoch}] average ce loss and dice loss are {val_loss_ce:.5f}, {val_loss_dice:.5f}')
             # save the model
-            if args.is_master and val_loss_dice < best_loss_dice:
-                best_loss_dice = val_loss_dice
-                print(f'Saving the model at epoch {epoch} with dice loss {best_loss_dice:.4f}')
-                torch.save(model, os.path.join(args.save_folder, 'best_model.pt'))
+            if args.is_master:
+                # save current model
+                torch.save(model, os.path.join(args.save_folder, 'final_model.pt'))
+
+                if val_loss_dice < best_loss_dice:
+                    best_loss_dice = val_loss_dice
+                    print(f'Saving the model at epoch {epoch} with dice loss {best_loss_dice:.4f}')
+                    torch.save(model, os.path.join(args.save_folder, 'best_model.pt'))
+            
 
         # save image for subsequent analysis
         if debug and args.is_master and epoch % args.test_frequency == 0:
@@ -336,15 +377,22 @@ def main():
     # Network
     with open(args.net_config) as fp:
         net_configs = json.load(fp)
+        print('Network configs: ', net_configs)
         model = unet.UNet(**net_configs)
         ddp_print('\n' + '='*10 + 'Network Structure' + '='*10)
         ddp_print(model)
         ddp_print('='*30 + '\n')
 
+    # get the network downsizing informations
+    ds_ratios = np.array([1,1,1])
+    for stride in net_configs['stride_list']:
+        ds_ratios *= np.array(stride)
+    args.ds_ratios = tuple(ds_ratios.tolist())
+
     model = model.to(args.device)
     if args.checkpoint:
         # load checkpoint
-        print(f'Loading checkpoint: {args.checkpoint}')
+        ddp_print(f'Loading checkpoint: {args.checkpoint}')
         checkpoint = torch.load(args.checkpoint, map_location={'cuda:0':f'cuda:{args.local_rank}'})
         model.load_state_dict(checkpoint.module.state_dict())
         del checkpoint
@@ -366,12 +414,16 @@ def main():
     crit_ce = nn.CrossEntropyLoss(reduction='none').to(args.device)
     crit_dice = BinaryDiceLoss(smooth=1e-5, input_logits=False).to(args.device)
 
-    imgshape = tuple(map(int, args.image_shape.split(',')))
+    args.imgshape = tuple(map(int, args.image_shape.split(',')))
+
+    # Print out the arguments information
+    ddp_print('Argument are: ')
+    ddp_print(f'   {args}')
  
     if args.evaluation:
-        evaluate(model, optimizer, crit_ce, crit_dice, imgshape)
+        evaluate(model, optimizer, crit_ce, crit_dice, args.imgshape)
     else:
-        train(model, optimizer, crit_ce, crit_dice, imgshape)
+        train(model, optimizer, crit_ce, crit_dice, args.imgshape)
 
 if __name__ == '__main__':
     main()

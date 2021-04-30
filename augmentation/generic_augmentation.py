@@ -669,8 +669,8 @@ class InstanceAugmentation(object):
         elif phase == 'test':
             self.augment = Compose([
                 ConvertToFloat(),
-                CenterCropKeepRatio(1.0, imgshape),
-                ResizeToDividable(divid),
+                #CenterCropKeepRatio(1.0, imgshape),
+                #ResizeToDividable(divid),
             ])
         else:
             raise NotImplementedError
