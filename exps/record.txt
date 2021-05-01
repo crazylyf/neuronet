@@ -29,3 +29,4 @@ exp027: noFastDownsizing
 exp028: unlabelled soma
 exp029: SGD + noFastDownsizing + 1000 epoch
 exp030: re-run exp029 with final model saving, maximal 500 epochs
+exp031: as 030, add GaussianNoise and Gamma augmentation, use step lr policy

@@ -78,6 +78,8 @@ parser.add_argument('--checkpoint', default='', type=str,
                     help='Saved checkpoint')
 parser.add_argument('--evaluation', action='store_true',
                     help='evaluation')
+parser.add_argument('--lr_steps', default='40,50,60,70,80,90,95', type=str,
+                    help='Steps for step_lr policy')
 # network specific
 parser.add_argument('--net_config', default="./models/configs/default_config.json",
                     type=str,
@@ -89,11 +91,6 @@ args = parser.parse_args()
 
 
 
-def poly_lr(epoch, max_epochs, initial_lr, exponent=0.9):
-    """
-    poly_lr policy as the same as nnUNet
-    """
-    return initial_lr * (1 - epoch / max_epochs)**exponent
 
 # test only function
 def crop_data(img, lab):
@@ -195,7 +192,8 @@ def validate(model, val_loader, crit_ce, crit_dice, epoch, debug=True, num_image
     processed = -1
     for img,lab,imgfiles,swcfiles in val_loader:
         processed += 1
-        ddp_print(f'==> processed: {processed}')
+        if phase == 'test':
+            ddp_print(f'==> processed: {processed}')
 
         img, lab = crop_data(img, lab)
         img_d = img.to(args.device)
@@ -351,7 +349,7 @@ def train(model, optimizer, crit_ce, crit_dice, imgshape):
             save_image_in_training(imgfiles, img, lab, logits, epoch, 'train', debug_idx)
 
         # learning rate decay
-        cur_lr = poly_lr(epoch, args.max_epochs, args.lr, 0.9)
+        cur_lr = util.step_lr(epoch, args.lr_steps, args.lr, 0.3)
         ddp_print(f'Setting lr to {cur_lr}')
         for g in optimizer.param_groups:
             g['lr'] = cur_lr
@@ -416,6 +414,7 @@ def main():
     crit_dice = BinaryDiceLoss(smooth=1e-5, input_logits=False).to(args.device)
 
     args.imgshape = tuple(map(int, args.image_shape.split(',')))
+    args.lr_steps = tuple(map(int, args.lr_steps.split(',')))
 
     # Print out the arguments information
     ddp_print('Argument are: ')

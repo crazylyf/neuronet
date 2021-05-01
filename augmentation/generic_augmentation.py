@@ -164,17 +164,22 @@ class RandomBrightness(AbstractTransform):
         return img, tree, spacing
 
 class RandomGaussianNoise(AbstractTransform):
-    def __init__(self, max_var=0.2, p=0.5):
+    def __init__(self, p=0.5, max_var=0.1, max_ratio=0.01):
         super(RandomGaussianNoise, self).__init__(p)
         self.max_var = max_var
+        self.max_ratio = max_ratio
 
     def __call__(self, img, tree=None, spacing=None):
         if np.random.random() < self.p:
             var = np.random.uniform(0, self.max_var)
             img_flat = img.reshape((img.shape[0],-1))
             mm = img_flat.max(axis=1) - img_flat.min(axis=1)
-            noise = np.random.normal(0, var, size=img.shape) * mm.reshape((-1,1,1,1))
+            
+            keep_ratio = np.random.uniform(0, self.max_ratio)
+            mask = np.random.random(size=img.shape) < keep_ratio
+            noise = np.random.normal(0, var, size=img.shape) * mm.reshape((-1,1,1,1)) * mask.astype(np.float32)
             #print(f'RandomGaussianNoise with var: {var}')
+            
             img += noise
         return img, tree, spacing
 
@@ -218,7 +223,44 @@ class RandomResample(AbstractTransform):
                 img[c] = resize(downsampled, shape, order=self.order_up, mode='edge', anti_aliasing=False)
     
         return img, tree, spacing
-            
+
+class GammaTransform(AbstractTransform):
+    def __init__(self, p, gamma_range=(0.5,2), invert_image=False, per_channel=False, retain_stats=False):
+        super(GammaTransform, self).__init__(p)
+        self.gamma_range = gamma_range
+        self.invert_image=invert_image
+        self.per_channel = per_channel
+        self.retain_stats = retain_stats
+
+    def __call__(self, img, tree=None, spacing=None):
+        if np.random.random() < self.p:
+            img = image_util.augment_gamma(img, self.gamma_range, 
+                                           self.invert_image,
+                                           per_channel=self.per_channel,
+                                           retain_stats=self.retain_stats)
+        
+        return img, tree, spacing
+
+class GammaTransformDualModes(AbstractTransform):
+    def __init__(self, p, gamma_range=(0.5,2), per_channel=False, retain_stats=False):
+        super(GammaTransformDualModes, self).__init__(p)
+        self.gamma_range = gamma_range
+        self.per_channel = per_channel
+        self.retain_stats = retain_stats
+    
+    def __call__(self, img, tree=None, spacing=None):
+        if np.random.random() < self.p:
+            if np.random.randint(2):
+                img = image_util.augment_gamma(img, self.gamma_range, 
+                                           True,
+                                           per_channel=self.per_channel,
+                                           retain_stats=self.retain_stats)
+            else:
+                img = image_util.augment_gamma(img, self.gamma_range, 
+                                           False,
+                                           per_channel=self.per_channel,
+                                           retain_stats=self.retain_stats)
+        return img, tree, spacing
             
         
 # Coordinate-changing augmentations
@@ -297,26 +339,7 @@ class ScaleToFixedSize(AbstractTransform):
             img, tree, spacing = image_scale_4D(img, tree, spacing, shape, self.target_shape, self.mode, self.anti_aliasing, self.update_spacing)
 
         return img, tree, spacing
-            
     
-class RandomCrop(AbstractTransform):
-    def __init__(self, p=0.5, imgshape=None, crop_range=(0.85, 1), per_axis=True):
-        super(RandomCrop, self).__init__(p)
-        self.imgshape = imgshape
-        self.crop_range = crop_range
-        self.per_axis = per_axis
-
-    def __call__(self, img, tree=None, spacing=None):
-        if np.random.random() > self.p:
-            return img, tree, spacing
-        
-        if self.crop_range[0] == self.crop_range[1]:
-            target_shape = self.imgshape
-        else:
-            shape, target_shape = get_random_shape(self.imgshape, self.crop_range, self.per_axis)
-
-        img, tree, spacing = random_crop_image_4D(img, tree, spacing, target_shape)
-        return img, tree, spacing       
 
 class RandomCrop(AbstractTransform):
     def __init__(self, p=0.5, imgshape=None, crop_range=(0.85, 1), per_axis=True, force_fg_sampling=False):
@@ -361,44 +384,6 @@ class RandomCrop(AbstractTransform):
                 new_img, new_tree, new_spacing = random_crop_image_4D(img, tree, spacing, target_shape)
         
             return new_img, new_tree, new_spacing
-
-#verified
-class RandomCenterCrop(AbstractTransform):
-    def __init__(self, p=1.0, reference_shape=None, max_aniso_scale=1.2):
-        super(RandomCenterCrop, self).__init__(p)
-        self.reference_shape = reference_shape
-        self.max_aniso_scale = max_aniso_scale
-
-    def __call__(self, img, tree=None, spacing=None):
-        if np.random.random() > self.p:
-            return img, tree, spacing
-
-        shape = np.array(img[0].shape)
-        reference_shape = np.array(self.reference_shape)
-        scales = shape / self.reference_shape
-        min_dim = np.argmin(scales)
-
-        target_shape = reference_shape.copy()
-        for i in range(len(target_shape)):
-            min_size = int(round(scales[min_dim] * reference_shape[i]))
-            max_size = min(shape[i], int(self.max_aniso_scale * min_size))
-            target_shape[i] = np.random.randint(min_size, max_size+1)
-        target_shape = target_shape.astype(np.int)
-        # do center cropping
-        sz,sy,sx = (shape - target_shape) // 2
-        img = img[:,sz:sz+target_shape[0],sy:sy+target_shape[1],sx:sx+target_shape[2]]
-        
-        if tree is not None:
-            new_tree = []
-            for leaf in tree:
-                idx, type_, x, y, z, r, p = leaf
-                x = x - sx
-                y = y - target_shape[1] - (img.shape[2] - y - sy)
-                z = z - sz
-                new_tree.append((idx,type_,x,y,z,r,p))
-            return img, new_tree, spacing
-        else:
-            return img, tree, spacing
 
 # verified
 class CenterCropKeepRatio(AbstractTransform):
@@ -651,13 +636,19 @@ class RandomGeometric(AbstractTransform):
 class InstanceAugmentation(object):
     def __init__(self, p=0.2, imgshape=(256,512,512), phase='train', divid=2**5):
         if phase == 'train':
+            pre_crop_size = []
+            pre_crop_ratio = 1.5
+            
+
             self.augment = Compose([
                 ConvertToFloat(),
                 RandomCrop(1.0, imgshape),
-                RandomSaturation(p=p),
-                RandomBrightness(p=p),
+                GammaTransformDualModes(p=p, gamma_range=(0.7,1.4), per_channel=False, retain_stats=False),
+                RandomGaussianNoise(p=p),
+                #RandomSaturation(p=p),
+                #RandomBrightness(p=p),
                 #RandomGaussianBlur(p=p/2.),
-                RandomResample(p=p),
+                #RandomResample(p=p),
                 RandomMirror(p=p),
                 ScaleToFixedSize(1.0, imgshape),
             ])
@@ -708,7 +699,7 @@ if __name__ == '__main__':
     t0 = time.time()
     
     #aug = InstanceAugmentation(p=1.0)
-    aug = InstanceAugmentation(0.2, (128,128,128))
+    aug = RandomGaussianNoise(p=1.0)
     img_new, tree_new, spacing = aug(img, tree, spacing)
     print(f'Augmented image statistics: {img_new.mean()}, {img_new.std()}, {img_new.min()}, {img_new.max()}')
     print(f'Timed used: {time.time()-t0}s')

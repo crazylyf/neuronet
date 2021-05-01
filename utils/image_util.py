@@ -61,3 +61,44 @@ def random_crop_3D_image(img, crop_size):
 
     return img[lb_x:lb_x + crop_size[0], lb_y:lb_y + crop_size[1], lb_z:lb_z + crop_size[2]], lb_x, lb_y, lb_z
 
+
+def augment_gamma(data_sample, gamma_range=(0.5, 2), invert_image=False, epsilon=1e-7, per_channel=False,
+                  retain_stats=False):
+    """Function directly copied from batchgenerators"""
+    if invert_image:
+        data_sample = - data_sample
+    if not per_channel:
+        if retain_stats:
+            mn = data_sample.mean()
+            sd = data_sample.std()
+        if np.random.random() < 0.5 and gamma_range[0] < 1:
+            gamma = np.random.uniform(gamma_range[0], 1)
+        else:
+            gamma = np.random.uniform(max(gamma_range[0], 1), gamma_range[1])
+        minm = data_sample.min()
+        rnge = data_sample.max() - minm
+        data_sample = np.power(((data_sample - minm) / float(rnge + epsilon)), gamma) * rnge + minm
+        if retain_stats:
+            data_sample = data_sample - data_sample.mean()
+            data_sample = data_sample / (data_sample.std() + 1e-8) * sd
+            data_sample = data_sample + mn
+    else:
+        for c in range(data_sample.shape[0]):
+            if retain_stats:
+                mn = data_sample[c].mean()
+                sd = data_sample[c].std()
+            if np.random.random() < 0.5 and gamma_range[0] < 1:
+                gamma = np.random.uniform(gamma_range[0], 1)
+            else:
+                gamma = np.random.uniform(max(gamma_range[0], 1), gamma_range[1])
+            minm = data_sample[c].min()
+            rnge = data_sample[c].max() - minm
+            data_sample[c] = np.power(((data_sample[c] - minm) / float(rnge + epsilon)), gamma) * float(rnge + epsilon) + minm
+            if retain_stats:
+                data_sample[c] = data_sample[c] - data_sample[c].mean()
+                data_sample[c] = data_sample[c] / (data_sample[c].std() + 1e-8) * sd
+                data_sample[c] = data_sample[c] + mn
+    if invert_image:
+        data_sample = - data_sample
+    return data_sample
+

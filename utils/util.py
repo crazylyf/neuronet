@@ -63,5 +63,21 @@ def logits_to_seg(logits, thresh=None):
             seg[~mask] = 0
     return seg
 
+def poly_lr(epoch, max_epochs, initial_lr, exponent=0.9):
+    """ 
+    poly_lr policy as the same as nnUNet
+    """
+    return initial_lr * (1 - epoch / max_epochs)**exponent
+
+def step_lr(epoch, steps, initial_lr, scale_factor=0.2):
+    lr = initial_lr
+    for step in steps:
+        if epoch > step:
+            lr *= scale_factor
+        else:
+            break
+    return lr
+        
+
 
 # TODO: network ploting
