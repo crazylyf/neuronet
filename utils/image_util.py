@@ -102,3 +102,51 @@ def augment_gamma(data_sample, gamma_range=(0.5, 2), invert_image=False, epsilon
         data_sample = - data_sample
     return data_sample
 
+def do_gamma(data_sample, gamma, trunc_thresh=0, invert_image=False, epsilon=1e-7, per_channel=False,
+                  retain_stats=False):
+    """Function directly copied from batchgenerators"""
+    if invert_image:
+        data_sample = - data_sample
+    if not per_channel:
+        if retain_stats:
+            mn = data_sample.mean()
+            sd = data_sample.std()
+
+        minm = data_sample.min()
+        rnge = data_sample.max() - minm
+        if trunc_thresh <= 0 or trunc_thresh >= 1:
+            data_sample = np.power(((data_sample - minm) / float(rnge + epsilon)), gamma) * rnge + minm
+        else:
+            data_sample = (data_sample - minm) / float(rnge + epsilon)
+            mask = data_sample < trunc_thresh
+            data_sample[mask] = np.power(data_sample[mask], gamma)
+            data_sample[~mask] = data_sample[~mask] - trunc_thresh + np.power(trunc_thresh, gamma)
+            data_sample = data_sample * rnge + minm
+        if retain_stats:
+            data_sample = data_sample - data_sample.mean()
+            data_sample = data_sample / (data_sample.std() + 1e-8) * sd
+            data_sample = data_sample + mn
+    else:
+        for c in range(data_sample.shape[0]):
+            if retain_stats:
+                mn = data_sample[c].mean()
+                sd = data_sample[c].std()
+
+            minm = data_sample[c].min()
+            rnge = data_sample[c].max() - minm
+            if trunc_thresh <= 0 or trunc_thresh >= 1:
+                data_sample[c] = np.power(((data_sample[c] - minm) / float(rnge + epsilon)), gamma) * float(rnge + epsilon) + minm
+            else:
+                data_sample[c] = (data_sample[c] - minm) / float(rnge + epsilon)
+                mask = data_sample[c] < trunc_thresh
+                data_sample[c][mask] = np.power(data_sample[c][mask], gamma)
+                data_sample[c][~mask] = data_sample[c][~mask] - trunc_thresh + np.power(trunc_thresh, gamma)
+                data_sample[c] = data_sample[c] * rnge + minm
+
+            if retain_stats:
+                data_sample[c] = data_sample[c] - data_sample[c].mean()
+                data_sample[c] = data_sample[c] / (data_sample[c].std() + 1e-8) * sd
+                data_sample[c] = data_sample[c] + mn
+    if invert_image:
+        data_sample = - data_sample
+    return data_sample

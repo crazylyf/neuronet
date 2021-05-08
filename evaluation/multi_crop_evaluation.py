@@ -128,7 +128,8 @@ class MostFitCropEvaluation(GenericMultiCropEvaluation):
         pads = []
         for pi, si, di in zip(self.patch_size, imgshape, self.divid):
             if pi >= si:
-                crop_size = self.get_divid_shape(imgshape, di)
+                crop_size = self.get_divid_shape(si, di)
+                crop_sizes.append(crop_size)
                 pads.append(crop_size - imgshape)
             else:
                 crop_size = self.get_divid_shape(pi, di)
