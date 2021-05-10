@@ -130,7 +130,7 @@ class MostFitCropEvaluation(GenericMultiCropEvaluation):
             if pi >= si:
                 crop_size = self.get_divid_shape(si, di)
                 crop_sizes.append(crop_size)
-                pads.append(crop_size - imgshape)
+                pads.append(crop_size - si)
             else:
                 crop_size = self.get_divid_shape(pi, di)
                 ncrop = int(math.ceil(si / crop_size))

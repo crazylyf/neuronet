@@ -224,9 +224,9 @@ class RandomResample(AbstractTransform):
     
         return img, tree, spacing
 
-class GammaTransform(AbstractTransform):
+class RandomGammaTransform(AbstractTransform):
     def __init__(self, p, gamma_range=(0.5,2), invert_image=False, per_channel=False, retain_stats=False):
-        super(GammaTransform, self).__init__(p)
+        super(RandomGammaTransform, self).__init__(p)
         self.gamma_range = gamma_range
         self.invert_image=invert_image
         self.per_channel = per_channel
@@ -241,9 +241,9 @@ class GammaTransform(AbstractTransform):
         
         return img, tree, spacing
 
-class GammaTransformDualModes(AbstractTransform):
+class RandomGammaTransformDualModes(AbstractTransform):
     def __init__(self, p, gamma_range=(0.5,2), per_channel=False, retain_stats=False):
-        super(GammaTransformDualModes, self).__init__(p)
+        super(RandomGammaTransformDualModes, self).__init__(p)
         self.gamma_range = gamma_range
         self.per_channel = per_channel
         self.retain_stats = retain_stats
@@ -261,7 +261,23 @@ class GammaTransformDualModes(AbstractTransform):
                                            per_channel=self.per_channel,
                                            retain_stats=self.retain_stats)
         return img, tree, spacing
-            
+
+class GammaTransform(AbstractTransform):
+    def __init__(self, gamma=1.0, trunc_thresh=0, invert_image=False, per_channel=False, retain_stats=False):
+        super(GammaTransform, self).__init__(1.0)
+        self.gamma = gamma
+        self.invert_image=invert_image
+        self.per_channel = per_channel
+        self.retain_stats = retain_stats
+        self.trunc_thresh = trunc_thresh
+
+    def __call__(self, img, tree=None, spacing=None):
+        img = image_util.do_gamma(img, gamma=self.gamma, 
+                       trunc_thresh=self.trunc_thresh, 
+                       invert_image=self.invert_image, 
+                       per_channel=self.per_channel, 
+                       retain_stats=self.retain_stats)
+        return img, tree, spacing
         
 # Coordinate-changing augmentations
 class RandomMirror(AbstractTransform):
@@ -643,7 +659,7 @@ class InstanceAugmentation(object):
             self.augment = Compose([
                 ConvertToFloat(),
                 RandomCrop(1.0, imgshape),
-                GammaTransformDualModes(p=p, gamma_range=(0.7,1.4), per_channel=False, retain_stats=False),
+                RandomGammaTransformDualModes(p=p, gamma_range=(0.7,1.4), per_channel=False, retain_stats=False),
                 RandomGaussianNoise(p=p),
                 #RandomSaturation(p=p),
                 #RandomBrightness(p=p),
@@ -662,6 +678,7 @@ class InstanceAugmentation(object):
                 ConvertToFloat(),
                 #CenterCropKeepRatio(1.0, imgshape),
                 #ResizeToDividable(divid),
+                GammaTransform(gamma=0.4, trunc_thresh=0.4),
             ])
         else:
             raise NotImplementedError
