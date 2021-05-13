@@ -78,6 +78,8 @@ parser.add_argument('--checkpoint', default='', type=str,
                     help='Saved checkpoint')
 parser.add_argument('--evaluation', action='store_true',
                     help='evaluation')
+parser.add_argument('--eval_flip', action='store_true',
+                    help='whether flip image to do sample ensemble')
 parser.add_argument('--lr_steps', default='40,50,60,70,80,90,95', type=str,
                     help='Steps for step_lr policy')
 # network specific
@@ -201,25 +203,50 @@ def validate(model, val_loader, crit_ce, crit_dice, epoch, debug=True, num_image
         if phase == 'val':
             loss_ces, loss_dices, loss, logits = get_forward_eval(img_d, lab_d, crit_ce, crit_dice, model)
         elif phase == 'test':
-            crops, crop_sizes, lab_crops = noce.get_image_crops(img_d[0], lab_d[0])
-            logits_list = []
-            loss_ces, loss_dices, loss = [], [], 0
-            for i in range(len(crops)):
-                loss_ces_i, loss_dices_i, loss_i, logits_i = get_forward_eval(crops[i][None], lab_crops[i][None], crit_ce, crit_dice, model)
-                logits_list.append(logits_i[0])
-                loss_ces.append(loss_ces_i)
-                loss_dices.append(loss_dices_i)
-                loss += loss_i
+            n_ens = 4 if args.eval_flip else 1
+            for ie in range(n_ens):
+                if ie == 0:
+                    crops, crop_sizes, lab_crops = noce.get_image_crops(img_d[0], lab_d[0])
+                elif ie == 1:
+                    crops, crop_sizes, lab_crops = noce.get_image_crops(torch.flip(img_d[0], [2]), torch.flip(lab_d[0], [1]))
+                elif ie == 2:
+                    crops, crop_sizes, lab_crops = noce.get_image_crops(torch.flip(img_d[0], [3]), torch.flip(lab_d[0], [2]))
+                elif ie == 3:
+                    crops, crop_sizes, lab_crops = noce.get_image_crops(torch.flip(img_d[0], [2,3]), torch.flip(lab_d[0], [1,2]))
 
-            # merge the crop of prediction to unit one
-            logits = noce.get_pred_from_crops(lab_d[0].shape, logits_list, crop_sizes)[None]
-            ncrop = len(crops)
-            del crops, lab_crops, logits_list
+                logits_list = []
+                loss_ces, loss_dices, loss = [], [], 0
+                for i in range(len(crops)):
+                    loss_ces_i, loss_dices_i, loss_i, logits_i = get_forward_eval(crops[i][None], lab_crops[i][None], crit_ce, crit_dice, model)
+                    logits_list.append(logits_i[0])
+                    loss_ces.append(loss_ces_i)
+                    loss_dices.append(loss_dices_i)
+                    loss += loss_i
 
-            # average the loss
-            loss_ces = np.array(loss_ces).mean(axis=0)
-            loss_dices = np.array(loss_dices).mean(axis=0)
-            loss /= ncrop
+                # merge the crop of prediction to unit one
+                logits = noce.get_pred_from_crops(lab_d[0].shape, logits_list, crop_sizes)[None]
+                if ie == 0:
+                    avg_logits = logits
+                elif ie == 1:
+                    avg_logits += torch.flip(logits, [3])
+                elif ie == 2:
+                    avg_logits += torch.flip(logits, [4])
+                elif ie == 3:
+                    avg_logits += torch.flip(logits, [3,4])
+                else:
+                    raise ValueError
+
+                ncrop = len(crops)
+                del crops, lab_crops, logits_list
+
+                # average the loss
+                loss_ces = np.array(loss_ces).mean(axis=0)
+                loss_dices = np.array(loss_dices).mean(axis=0)
+                loss /= ncrop
+                #TODO: the loss for ensemble mode should also averaged
+                
+            # averaging all logits
+            logits = avg_logits / n_ens
         else:
             raise ValueError
 
