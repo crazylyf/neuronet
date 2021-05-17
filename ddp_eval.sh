@@ -33,7 +33,6 @@ python -u -m torch.distributed.launch \
     --image_shape 128,160,160 \
     --batch_size 1 \
     --evaluation \
-    --eval_flip \
     --checkpoint ${exp_folder}/best_model.pt \
     --data_file data/task0005_cropAll/data_splits.pkl
     

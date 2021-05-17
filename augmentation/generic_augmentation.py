@@ -678,7 +678,7 @@ class InstanceAugmentation(object):
                 ConvertToFloat(),
                 #CenterCropKeepRatio(1.0, imgshape),
                 #ResizeToDividable(divid),
-                GammaTransform(gamma=0.4, trunc_thresh=0.4),
+                GammaTransform(gamma=0.4, trunc_thresh=0.216),
             ])
         else:
             raise NotImplementedError
