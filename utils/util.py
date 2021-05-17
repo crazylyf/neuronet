@@ -52,7 +52,7 @@ def worker_init_fn(worker_id):
 
 def logits_to_seg(logits, thresh=None):
     with torch.no_grad():
-        if thresh is not None:
+        if thresh is None:
             # no need to do expensive softmax
             seg = logits.argmax(dim=1)
         else:
