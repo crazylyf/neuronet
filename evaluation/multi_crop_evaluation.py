@@ -166,7 +166,7 @@ class MostFitCropEvaluation(GenericMultiCropEvaluation):
         lab_crops = None
         if lab is not None:
             lab_crops = []
-            pad_lab = F.pad(lab[None][None], padding, mode='constant', value=0)[0,0]
+            pad_lab = F.pad(lab[None], padding, mode='constant', value=0)[0]
         crops = []
         
         for zi in range(int(math.ceil(nshape[0] / size_z))):
@@ -189,7 +189,7 @@ class MostFitCropEvaluation(GenericMultiCropEvaluation):
                     crop = pad_img[:, zs:ze, ys:ye, xs:xe]
                     crops.append(crop)
                     if lab is not None:
-                        lab_crop = pad_lab[zs:ze, ys:ye, xs:xe]
+                        lab_crop = pad_lab[:, zs:ze, ys:ye, xs:xe]
                         lab_crops.append(lab_crop)
         
         return crops, crop_sizes, lab_crops

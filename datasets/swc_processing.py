@@ -230,20 +230,25 @@ def swc_to_image(tree, r_exp=3, z_ratio=0.4, imgshape=(256,512,512), flipy=True)
             zn.append(zi)
     img[zn,yn,xn] = 1
 
+    # centerline
+    img0 = img.copy()
     # do morphology expansion
-    r_z = int(round(z_ratio * r_exp))
+    r_z = max(1, int(round(z_ratio * r_exp)))
     selem = np.ones((r_z, r_exp, r_exp), dtype=np.uint8)
     img = morphology.dilation(img, selem)
     # soma-labelling
     if soma_node is not None:
         lab_img = soma_labelling(img, r=r_exp*2+1, thresh=220, label=1, soma_pos=soma_node[2:5])
+        lab_img0 = soma_labelling(img0, r=r_exp*2+1, thresh=220, label=1, soma_pos=soma_node[2:5])
     else:
         lab_img = img
+        lab_img0 = img0
         
     if flipy:
         lab_img = lab_img[:,::-1]   # flip in y-axis, as the image is flipped
+        lab_img0 = lab_img0[:,::-1]
 
-    return lab_img
+    return lab_img, lab_img0
     
 if __name__ == '__main__':
     prefix = '8315_19523_2299'

@@ -145,26 +145,22 @@ def get_forward(img_d, lab_d, crit_ce, crit_dice, model):
 
     for i in range(len(logits)):
         # get prediction
-        probs = F.softmax(logits[i], dim=1)
-        if args.use_robust_loss:
-            with torch.no_grad():
-                pseudo_fg = probs[:,1] > 0.7
-                loss_weights = ((~pseudo_fg) | mask_d).float()
-                ddp_print(f'loss_weights: {loss_weights.sum():.1f}, {loss_weights.nelement()}')
-                loss_weights_unsq = loss_weights.unsqueeze(1)
-        else:
-            loss_weights = 1.0
-            loss_weights_unsq = 1.0
+        probs = F.softmax(logits[i][:,:2], dim=1)
+        probs0 = F.softmax(logits[i][:,2:], dim=1)
+        loss_weights = 1.0
+        loss_weights_unsq = 1.0
 
-        loss_ce = (crit_ce(logits[i], lab_d.long()) * loss_weights).mean()
-        loss_dice = crit_dice(probs * loss_weights_unsq, lab_d.float() * loss_weights)
+        loss_ce = (crit_ce(logits[i][:,:2], lab_d[:,0].long()) * loss_weights).mean() + \
+                    (crit_ce(logits[i][:,2:], lab_d[:,1].long()) * loss_weights).mean()
+        loss_dice = crit_dice(probs * loss_weights_unsq, lab_d[:,0].float() * loss_weights) + \
+                    crit_dice(probs0 * loss_weights_unsq, lab_d[:,1].float() * loss_weights)
         loss_ce_items.append(loss_ce.item())
         loss_dice_items.append(loss_dice.item())
         if i == 0:
             loss = (loss_ce + loss_dice) * weights[i]
         else:
             loss += (loss_ce + loss_dice) * weights[i]
-    return loss_ce_items, loss_dice_items, loss, logits[0]
+    return loss_ce_items, loss_dice_items, loss, logits[0][:,2:]
 
 def get_forward_eval(img_d, lab_d, crit_ce, crit_dice, model):
     if args.amp:
@@ -224,7 +220,7 @@ def validate(model, val_loader, crit_ce, crit_dice, epoch, debug=True, num_image
                     loss += loss_i
 
                 # merge the crop of prediction to unit one
-                logits = noce.get_pred_from_crops(lab_d[0].shape, logits_list, crop_sizes)[None]
+                logits = noce.get_pred_from_crops(lab_d[0,0].shape, logits_list, crop_sizes)[None]
                 if ie == 0:
                     avg_logits = logits
                 elif ie == 1:
@@ -260,7 +256,7 @@ def validate(model, val_loader, crit_ce, crit_dice, epoch, debug=True, num_image
                 num_saved += 1
                 if num_saved > num_image_save:
                     break
-                save_image_in_training(imgfiles, img, lab, logits, epoch, phase, debug_idx)
+                save_image_in_training(imgfiles, img, lab[:,1], logits, epoch, phase, debug_idx)
 
     losses = torch.from_numpy(np.array(losses)).to(args.device)
     distrib.all_reduce(losses, op=distrib.ReduceOp.SUM)
@@ -373,7 +369,7 @@ def train(model, optimizer, crit_ce, crit_dice, imgshape):
 
         # save image for subsequent analysis
         if debug and args.is_master and epoch % args.test_frequency == 0:
-            save_image_in_training(imgfiles, img, lab, logits, epoch, 'train', debug_idx)
+            save_image_in_training(imgfiles, img, lab[:,1], logits, epoch, 'train', debug_idx)
 
         # learning rate decay
         cur_lr = util.step_lr(epoch, args.lr_steps, args.lr, 0.3)
