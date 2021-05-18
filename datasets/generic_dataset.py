@@ -38,7 +38,26 @@ class GenericDataset(tudata.Dataset):
     def load_data_list(split_file, phase):
         with open(split_file, 'rb') as fp:
             data_dict = pickle.load(fp)
-        return data_dict[phase]
+        if phase != 'test':
+            return data_dict[phase]
+        else:
+            dd = data_dict['test'] + data_dict['val']
+            new_datas = []
+            # remove multi-soma crops 
+            # read simple-soma data list
+            with open(img_list_file) as fp: 
+                imglist = []
+                for line in fp.readlines():
+                    line = line.strip()
+                    if not line: continue
+                    imglist.append(line)
+            imglist = set(imglist)
+            for sample in dd: 
+                imgfile = sample[0]
+                prefix = os.path.split(imgfile)[-1][:-5]
+                if prefix in imglist:
+                    new_datas.append(sample)
+            return new_datas
 
     def __getitem__(self, index):
         img, gt, imgfile, swcfile = self.pull_item(index)
