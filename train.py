@@ -58,8 +58,6 @@ parser.add_argument('--momentum', default=0.99, type=float,
                     help='Momentum value for optim')
 parser.add_argument('--weight_decay', default=3e-5, type=float,
                     help='Weight decay for SGD')
-parser.add_argument('--use_robust_loss', action='store_true', 
-                    help='Whether to use robust loss')
 parser.add_argument('--max_epochs', default=200, type=int,
                     help='maximal number of epochs')
 parser.add_argument('--step_per_epoch', default=200, type=int,
@@ -138,23 +136,13 @@ def get_forward(img_d, lab_d, crit_ce, crit_dice, model):
         logits = [logits]
 
     loss_ce_items, loss_dice_items = [], []
-    
-    if args.use_robust_loss:
-        with torch.no_grad():
-            mask_d = lab_d > 0
-
+   
     for i in range(len(logits)):
         # get prediction
         probs = F.softmax(logits[i], dim=1)
-        if args.use_robust_loss:
-            with torch.no_grad():
-                pseudo_fg = probs[:,1] > 0.7
-                loss_weights = ((~pseudo_fg) | mask_d).float()
-                ddp_print(f'loss_weights: {loss_weights.sum():.1f}, {loss_weights.nelement()}')
-                loss_weights_unsq = loss_weights.unsqueeze(1)
-        else:
-            loss_weights = 1.0
-            loss_weights_unsq = 1.0
+        
+        loss_weights = 1.0
+        loss_weights_unsq = 1.0
 
         loss_ce = (crit_ce(logits[i], lab_d.long()) * loss_weights).mean()
         loss_dice = crit_dice(probs * loss_weights_unsq, lab_d.float() * loss_weights)
@@ -181,7 +169,7 @@ def validate(model, val_loader, crit_ce, crit_dice, epoch, debug=True, num_image
     model.eval()
     num_saved = 0
     if num_image_save == -1:
-        num_image_save = 999
+        num_image_save = 9999
 
     if phase == 'test':
         from neuronet.evaluation.multi_crop_evaluation import NonOverlapCropEvaluation, MostFitCropEvaluation

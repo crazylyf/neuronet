@@ -28,7 +28,7 @@ python -u -m torch.distributed.launch \
     --node_rank $NODE_RANK \
     train.py \
     --deterministic \
-    --max_epochs 100 \
+    --max_epochs 76 \
     --save_folder ${exp_folder} \
     --amp \
     --step_per_epoch 200 \
