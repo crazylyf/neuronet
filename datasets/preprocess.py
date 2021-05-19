@@ -26,8 +26,8 @@ from batchgenerators.utilities.file_and_folder_operations import maybe_mkdir_p
 from multiprocessing.pool import Pool
 import pickle
 
-from swc_handler import parse_swc, write_swc
-from path_util import get_file_prefix
+from neuronet.pylib_local.swc_handler import parse_swc, write_swc
+from neuronet.pylib_local.path_util import get_file_prefix
 
 from neuronet.utils.image_util import normalize_normal
 from neuronet.datasets.swc_processing import soma_labelling, trim_swc, load_spacing

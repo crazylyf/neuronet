@@ -27,8 +27,8 @@ import pickle
 from skimage.draw import line_nd
 import skimage.morphology as morphology
 
-from swc_handler import parse_swc, write_swc
-from path_util import get_file_prefix
+from neuronet.pylib_local.swc_handler import parse_swc, write_swc
+from neuronet.pylib_local.path_util import get_file_prefix
 
 
 def soma_labelling(image, z_ratio=0.3, r=9, thresh=220, label=255, soma_pos=None):

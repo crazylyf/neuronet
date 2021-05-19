@@ -691,7 +691,7 @@ if __name__ == '__main__':
     import time
     from neuronet.utils.image_util import normalize_normal, unnormalize_normal
     from neuronet.utils.util import set_deterministic
-    from swc_handler import parse_swc, write_swc
+    from neuronet.pylib_local.swc_handler import parse_swc, write_swc
 
     
     file_prefix = '8315_19523_2299'
