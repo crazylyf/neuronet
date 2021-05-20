@@ -16,7 +16,7 @@ import numpy as np
 import torch.nn.functional as F
 
 class GenericMultiCropEvaluation(object):
-    def __init__(self, patch_size, divid=(2**4,2**5,2**5), pad_value='mean'):
+    def __init__(self, patch_size, divid=(2**4,2**5,2**5), pad_value='min'):
         self.patch_size = patch_size
         self.divid = divid
         self.pad_value = pad_value

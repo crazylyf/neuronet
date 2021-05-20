@@ -27,7 +27,7 @@ sys.setrecursionlimit(30000)
 class GenericDataset(tudata.Dataset):
 
     def __init__(self, split_file, phase='train', imgshape=(256,512,512)):
-        self.data_list = self.load_data_list(split_file, phase)
+        self.data_list = self.load_data_list(split_file, 'val')
         self.imgshape = imgshape
         print(f'Image shape of {phase}: {imgshape}')
 
@@ -38,6 +38,8 @@ class GenericDataset(tudata.Dataset):
     def load_data_list(split_file, phase):
         with open(split_file, 'rb') as fp:
             data_dict = pickle.load(fp)
+        return data_dict[phase]
+
         if phase != 'test':
             return data_dict[phase]
         else:
