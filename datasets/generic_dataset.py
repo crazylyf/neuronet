@@ -46,11 +46,11 @@ class GenericDataset(tudata.Dataset):
             # remove multi-soma crops 
             # read simple-soma data list
             with open(img_list_file) as fp: 
-            imglist = []
-            for line in fp.readlines():
-                line = line.strip()
-                if not line: continue
-                imglist.append(line)
+                imglist = []
+                for line in fp.readlines():
+                    line = line.strip()
+                    if not line: continue
+                    imglist.append(line)
             imglist = set(imglist)
             for sample in dd:
                 imgfile = sample[0]

@@ -126,6 +126,17 @@ def save_image_in_training(imgfiles, img, lab, logits, epoch, phase, idx):
         sitk.WriteImage(sitk.GetImageFromArray(lab_v), os.path.join(args.save_folder, out_lab_file))
         sitk.WriteImage(sitk.GetImageFromArray(log_v), os.path.join(args.save_folder, out_pred_file))
 
+def get_fn_weights(lab_d, probs, bg_thresh=0.5, weight_fn=5.0, start_epoch=5):
+    if args.curr_epoch < start_epoch:
+        loss_weights, loss_weights_unsq = 1.0, 1.0
+    else:
+        pos_mask = lab_d > 0
+        bg_mask = probs[:,0] > bg_thresh
+        fn_mask = pos_mask & bg_mask
+        loss_weights = torch.ones(fn_mask.size(), dtype=probs.dtype, device=probs.device)
+        loss_weights[fn_mask] = weight_fn
+        loss_weights_unsq = loss_weights.unsqueeze(1)
+    return loss_weights, loss_weights_unsq
 
 def get_forward(img_d, lab_d, crit_ce, crit_dice, model):
     logits = model(img_d)
@@ -138,22 +149,25 @@ def get_forward(img_d, lab_d, crit_ce, crit_dice, model):
         logits = [logits]
 
     loss_ce_items, loss_dice_items = [], []
-    
-    if args.use_robust_loss:
-        with torch.no_grad():
-            mask_d = lab_d > 0
 
     for i in range(len(logits)):
         # get prediction
         probs = F.softmax(logits[i][:,:2], dim=1)
         probs0 = F.softmax(logits[i][:,2:], dim=1)
-        loss_weights = 1.0
-        loss_weights_unsq = 1.0
+
+        # hard positive mining. NOTE: we can only do positive mining, as the label is incomplete
+        do_hard_pos_mining = True
+        if do_hard_pos_mining:
+            loss_weights, loss_weights_unsq = get_fn_weights(lab_d[:,0], probs, bg_thresh=0.5, weight_fn=1.5, start_epoch=5)
+            loss_weights0, loss_weights_unsq0 = get_fn_weights(lab_d[:,1], probs0, bg_thresh=0.5, weight_fn=1.5, start_epoch=5)
+        else:
+            loss_weights, loss_weights_unsq = 1.0, 1.0
+            loss_weights0, loss_weights_unsq0 = 1.0, 1.0
 
         loss_ce = (crit_ce(logits[i][:,:2], lab_d[:,0].long()) * loss_weights).mean() + \
-                    (crit_ce(logits[i][:,2:], lab_d[:,1].long()) * loss_weights).mean()
+                    (crit_ce(logits[i][:,2:], lab_d[:,1].long()) * loss_weights0).mean()
         loss_dice = crit_dice(probs * loss_weights_unsq, lab_d[:,0].float() * loss_weights) + \
-                    crit_dice(probs0 * loss_weights_unsq, lab_d[:,1].float() * loss_weights)
+                    crit_dice(probs0 * loss_weights_unsq, lab_d[:,1].float() * loss_weights0)
         loss_ce_items.append(loss_ce.item())
         loss_dice_items.append(loss_dice.item())
         if i == 0:
@@ -177,7 +191,7 @@ def validate(model, val_loader, crit_ce, crit_dice, epoch, debug=True, num_image
     model.eval()
     num_saved = 0
     if num_image_save == -1:
-        num_image_save = 999
+        num_image_save = 9999
 
     if phase == 'test':
         from neuronet.evaluation.multi_crop_evaluation import NonOverlapCropEvaluation, MostFitCropEvaluation
@@ -285,6 +299,7 @@ def load_dataset(phase, imgshape):
 def evaluate(model, optimizer, crit_ce, crit_dice, imgshape):
     phase = 'test'
     val_loader, val_iter = load_dataset(phase, imgshape)
+    args.curr_epoch = 0
     loss_ce, loss_dice, loss = validate(model, val_loader, crit_ce, crit_dice, epoch=0, debug=True, num_image_save=-1, phase=phase)
     ddp_print(f'Average loss_ce and loss_dice: {loss_ce:.5f} {loss_dice:.5f}')
 
@@ -302,6 +317,9 @@ def train(model, optimizer, crit_ce, crit_dice, imgshape):
     debug_idx = 0
     best_loss_dice = 1.0e10
     for epoch in range(args.max_epochs):
+        # push the epoch information to global namespace args
+        args.curr_epoch = epoch
+
         avg_loss_ce = 0
         avg_loss_dice = 0
         for it in range(args.step_per_epoch):
