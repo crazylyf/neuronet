@@ -16,6 +16,7 @@ import torch.utils.data as tudata
 import SimpleITK as sitk
 import torch
 import sys
+import os
 
 from swc_handler import parse_swc
 from neuronet.augmentation.generic_augmentation import InstanceAugmentation
@@ -27,7 +28,7 @@ sys.setrecursionlimit(30000)
 class GenericDataset(tudata.Dataset):
 
     def __init__(self, split_file, phase='train', imgshape=(256,512,512)):
-        self.data_list = self.load_data_list(split_file, 'val')
+        self.data_list = self.load_data_list(split_file, phase)
         self.imgshape = imgshape
         print(f'Image shape of {phase}: {imgshape}')
 
@@ -38,7 +39,7 @@ class GenericDataset(tudata.Dataset):
     def load_data_list(split_file, phase):
         with open(split_file, 'rb') as fp:
             data_dict = pickle.load(fp)
-        return data_dict[phase]
+        #return data_dict[phase]
 
         if phase != 'test':
             return data_dict[phase]
@@ -47,6 +48,7 @@ class GenericDataset(tudata.Dataset):
             new_datas = []
             # remove multi-soma crops 
             # read simple-soma data list
+            img_list_file = './data/img_singleSoma.list'
             with open(img_list_file) as fp: 
                 imglist = []
                 for line in fp.readlines():
@@ -56,7 +58,7 @@ class GenericDataset(tudata.Dataset):
             imglist = set(imglist)
             for sample in dd: 
                 imgfile = sample[0]
-                prefix = os.path.split(imgfile)[-1][:-5]
+                prefix = os.path.splitext(os.path.split(imgfile)[-1])[0]
                 if prefix in imglist:
                     new_datas.append(sample)
             return new_datas
