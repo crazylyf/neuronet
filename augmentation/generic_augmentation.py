@@ -64,7 +64,7 @@ def random_crop_image_4D(img, tree, spacing, target_shape):
         if c == 0:
             new_img[c],sz,sy,sx = image_util.random_crop_3D_image(img[c], target_shape)
         else:
-            new_img[c] = img[sz:sz+target_shape[0], sy:sy+target_shape[2], sx:sx:target_shape[2]]
+            new_img[c] = img[sz:sz+target_shape[0], sy:sy+target_shape[1], sx:sx:target_shape[2]]
     # processing the tree
     if tree is not None:
         new_tree = []
@@ -678,7 +678,7 @@ class InstanceAugmentation(object):
                 ConvertToFloat(),
                 #CenterCropKeepRatio(1.0, imgshape),
                 #ResizeToDividable(divid),
-                GammaTransform(gamma=0.4, trunc_thresh=0.216),
+                #GammaTransform(gamma=0.4, trunc_thresh=0.216),
             ])
         else:
             raise NotImplementedError
