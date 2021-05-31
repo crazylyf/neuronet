@@ -64,7 +64,7 @@ def random_crop_image_4D(img, tree, spacing, target_shape):
         if c == 0:
             new_img[c],sz,sy,sx = image_util.random_crop_3D_image(img[c], target_shape)
         else:
-            new_img[c] = img[sz:sz+target_shape[0], sy:sy+target_shape[1], sx:sx:target_shape[2]]
+            new_img[c] = img[sz:sz+target_shape[0], sy:sy+target_shape[1], sx:sx+target_shape[2]]
     # processing the tree
     if tree is not None:
         new_tree = []
@@ -678,7 +678,8 @@ class InstanceAugmentation(object):
                 ConvertToFloat(),
                 #CenterCropKeepRatio(1.0, imgshape),
                 #ResizeToDividable(divid),
-                #GammaTransform(gamma=0.4, trunc_thresh=0.216),
+                GammaTransform(gamma=0.4, trunc_thresh=0.216, retain_stats=True),  #0.2->0.133
+                #GammaTransform(gamma=0.4, trunc_thresh=0, retain_stats=True),  #0.2->0.133
             ])
         else:
             raise NotImplementedError
@@ -704,7 +705,7 @@ if __name__ == '__main__':
     #img = normalize_normal(img)
 
     img = np.load(imgfile)['data']    # 4D
-    if 1:
+    if 0:
         # save original image for visual inspection
         img_orig_un = unnormalize_normal(img.copy()).astype(np.uint8)[0]
         sitk.WriteImage(sitk.GetImageFromArray(img_orig_un), 'original.tiff')
@@ -716,7 +717,8 @@ if __name__ == '__main__':
     t0 = time.time()
     
     #aug = InstanceAugmentation(p=1.0)
-    aug = RandomGaussianNoise(p=1.0)
+    #aug = RandomGaussianNoise(p=1.0)
+    aug = RandomCrop(p=1.0, imgshape=(128,160,160))
     img_new, tree_new, spacing = aug(img, tree, spacing)
     print(f'Augmented image statistics: {img_new.mean()}, {img_new.std()}, {img_new.min()}, {img_new.max()}')
     print(f'Timed used: {time.time()-t0}s')
