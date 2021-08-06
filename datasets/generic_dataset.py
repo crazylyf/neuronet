@@ -45,6 +45,8 @@ class GenericDataset(tudata.Dataset):
             return data_dict[phase]
         else:
             dd = data_dict['test'] + data_dict['val']
+            #return dd
+            
             new_datas = []
             # remove multi-soma crops 
             # read simple-soma data list
@@ -62,6 +64,7 @@ class GenericDataset(tudata.Dataset):
                 if prefix in imglist:
                     new_datas.append(sample)
             return new_datas
+            
 
     def __getitem__(self, index):
         img, gt, imgfile, swcfile = self.pull_item(index)
@@ -76,15 +79,24 @@ class GenericDataset(tudata.Dataset):
         img = np.load(imgfile)['data']
         if img.ndim == 3:
             img = img[None]
-        tree = parse_swc(swcfile)
+        if swcfile is not None:
+            tree = parse_swc(swcfile)
+        else:
+            tree = None
+
         # random augmentation
         img, tree, _ = self.augment(img, tree, spacing)
-        # convert swc to image
-        # firstly trim_swc via deleting out-of-box points
-        tree = trim_out_of_box(tree, img[0].shape, True)
-        lab = swc_to_image(tree, imgshape=img[0].shape)
+        if tree is not None:
+            # convert swc to image
+            # firstly trim_swc via deleting out-of-box points
+            tree = trim_out_of_box(tree, img[0].shape, True)
+            lab = swc_to_image(tree, imgshape=img[0].shape)
+            return torch.from_numpy(img.astype(np.float32)), torch.from_numpy(lab.astype(np.uint8)), imgfile, swcfile
+        else:
+            lab = np.random.random(img[0].shape) > 0.5
+            return torch.from_numpy(img.astype(np.float32)), torch.from_numpy(lab.astype(np.uint8)), imgfile, imgfile
         
-        return torch.from_numpy(img.astype(np.float32)), torch.from_numpy(lab.astype(np.uint8)), imgfile, swcfile
+        
 
 
 if __name__ == '__main__':

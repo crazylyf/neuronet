@@ -15,6 +15,7 @@ import shutil
 import numpy as np
 from skimage.transform import resize
 from scipy.ndimage import gaussian_filter
+from skimage import exposure
 import SimpleITK as sitk
 from batchgenerators.augmentations.utils import create_zero_centered_coordinate_mesh, elastic_deform_coordinates, interpolate_img, rotate_coords_2d, rotate_coords_3d, scale_coords, elastic_deform_coordinates_2, resize_multichannel_image
 
@@ -223,6 +224,22 @@ class RandomResample(AbstractTransform):
                 img[c] = resize(downsampled, shape, order=self.order_up, mode='edge', anti_aliasing=False)
     
         return img, tree, spacing
+
+class CLAHETransform(AbstractTransform):
+    def __init__(self, p=1.0, kernel_size=(16,32,32)):
+        super(CLAHETransform, self).__init__(p)
+        self.kernel_size = kernel_size
+
+    def __call__(self, img, tree=None, spacing=None):
+        if np.random.random() < self.p:
+            assert img.shape[0] == 1
+            vmax, vmin = img.max(), img.min()
+            img = ((img - vmin) / (vmax - vmin + 1e-7) * 255).astype(np.uint8)
+            img_new = img.copy()
+            img = exposure.equalize_adapthist(img[0], kernel_size=self.kernel_size, clip_limit=0.01, nbins=256)
+            img = (img - img.min()) / (img.max() - img.min() + 1e-7) * (vmax - vmin) + vmin
+
+        return img[None], tree, spacing
 
 class RandomGammaTransform(AbstractTransform):
     def __init__(self, p, gamma_range=(0.5,2), invert_image=False, per_channel=False, retain_stats=False):
@@ -680,6 +697,7 @@ class InstanceAugmentation(object):
                 #ResizeToDividable(divid),
                 GammaTransform(gamma=0.4, trunc_thresh=0.216, retain_stats=True),  #0.2->0.133
                 #GammaTransform(gamma=0.4, trunc_thresh=0, retain_stats=True),  #0.2->0.133
+                #CLAHETransform(p=1.0, kernel_size=(16,32,32))
             ])
         else:
             raise NotImplementedError
