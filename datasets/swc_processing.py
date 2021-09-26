@@ -60,6 +60,38 @@ def soma_labelling(image, z_ratio=0.3, r=9, thresh=220, label=255, soma_pos=None
     
     return img_thresh
 
+def generate_elliptical_mask(dims, center, radius, z_scale=1.0):
+    # make sure dims, center are in order of (z,y,x)
+    dz,dy,dx = dims
+    cz,cy,cx = center
+
+    cmesh = np.mgrid[:dz, :dy, :dx]
+    distmat = (z_scale * (cmesh[0] - cz))**2 + (cmesh[1] - cy)**2 + (cmesh[2] - cx)**2
+    distmask = distmat <= radius**2
+    return distmask
+    
+
+def soma_labelling_ellipse(image, z_scale=1/0.23, r=9, thresh=220, label=255, soma_pos=None):
+    # 0.23 is the median resolution of all brains used.
+    dz, dy, dx = image.shape
+    if soma_pos is None:
+        cx, cy, cz = dx//2, dy//2, dz//2
+    else:
+        cx, cy, cz = soma_pos   # in x-y-z order
+        cx = int(round(cx))
+        cy = int(round(cy))
+        cz = int(round(cz))
+
+    img_thresh = image.copy()
+    img_thresh[img_thresh > thresh] = thresh
+
+    # generate the mask for using distance matrix
+    mask = generate_elliptical_mask((dz,dy,dx), (cz,cy,cx), r, z_scale)
+    
+    img_thresh[mask] = label
+    
+    return img_thresh
+
 def is_in_box(x, y, z, imgshape):
     """
     imgshape must be in (z,y,x) order

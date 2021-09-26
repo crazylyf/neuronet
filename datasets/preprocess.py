@@ -30,7 +30,7 @@ from swc_handler import parse_swc, write_swc
 from path_util import get_file_prefix
 
 from neuronet.utils.image_util import normalize_normal
-from neuronet.datasets.swc_processing import soma_labelling, trim_swc, load_spacing
+from neuronet.datasets.swc_processing import soma_labelling,soma_labelling_ellipse, trim_swc, load_spacing
 
 def load_data(data_dir, spacing_file, is_train=True):
     '''data_dir = '/home/lyf/data/seu_mouse/crop_data/dendriteImageSecR'
@@ -172,15 +172,23 @@ class GenericPreprocessor(object):
         print(f'--> Processing for image: {imgfile}')
         # load the image and annotated tree
         image = sitk.GetArrayFromImage(sitk.ReadImage(imgfile))
-        # manually labelling the soma
-        if self.label_soma:
-            image = soma_labelling(image, z_ratio=0.3, r=9)
-
-        if image.ndim == 3:
-            image = image[None]
+        # tree from swc
         tree = None
         if swcfile is not None:
             tree = parse_swc(swcfile)
+
+        # manually labelling the soma
+        if self.label_soma:
+            soma_pos = None
+            if tree is not None:
+                for leaf in tree:
+                    if leaf[-1] == -1:
+                        soma_pos = leaf[2:5]
+            image = soma_labelling_ellipse(image, r=12, soma_pos=soma_pos)
+
+        if image.ndim == 3:
+            image = image[None]
+        
         # remove nans
         image = self.remove_nans(image)
         # resampling to target spacing
@@ -260,7 +268,7 @@ class GenericPreprocessor(object):
 if __name__ == '__main__':
     data_dir = '/PBshare/lyf/transtation/seu_mouse/crop_data/dendriteImageSecR/'
     spacing_file = '/home/lyf/data/seu_mouse/crop_data/scripts/AllbrainResolutionInfo.csv'
-    output_dir = '/home/lyf/Research/auto_trace/neuronet/data/task0003_cropAll'
+    output_dir = '/home/lyf/Research/auto_trace/neuronet/data/task0007_cropAll_ellipse'
     is_train = True
     num_threads = 8
     gp = GenericPreprocessor()
