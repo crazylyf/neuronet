@@ -34,7 +34,6 @@ python -u -m torch.distributed.launch \
     --batch_size 1 \
     --evaluation \
     --checkpoint ${exp_folder}/final_model.pt \
-    #--data_file data/test_data/for_shendian/tiff/data_splits.pkl
     --data_file data/task0007_cropAll_ellipse/data_splits.pkl
     
 
