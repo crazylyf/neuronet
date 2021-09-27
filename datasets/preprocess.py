@@ -184,7 +184,7 @@ class GenericPreprocessor(object):
                 for leaf in tree:
                     if leaf[-1] == -1:
                         soma_pos = leaf[2:5]
-            image = soma_labelling_ellipse(image, r=12, soma_pos=soma_pos)
+            image = soma_labelling_ellipse(image, r=15, soma_pos=soma_pos)
 
         if image.ndim == 3:
             image = image[None]
@@ -219,7 +219,7 @@ class GenericPreprocessor(object):
         spacings = [spacing for _,_,spacing in data_list]
         self.target_spacing = self.get_target_spacing(spacings)
 
-
+        '''
         maybe_mkdir_p(output_dir)
         # execute preprocessing
         args_list = []
@@ -239,6 +239,7 @@ class GenericPreprocessor(object):
         pt.starmap(self._preprocess_sample, args_list)
         pt.close()
         pt.join()
+        '''
 
 
     def dataset_split(self, task_dir, val_ratio=0.1, test_ratio=0.1, seed=1024, img_ext='npy', lab_ext='swc'):
@@ -262,17 +263,40 @@ class GenericPreprocessor(object):
         # write to file
         with open(os.path.join(output_dir, 'data_splits.pkl'), 'wb') as fp:
             pickle.dump(splits, fp)
+     
+    def dataset_split2(self, task_dir, par_ratio=0.1, val_ratio=0.1, test_ratio=0.1, seed=1024, img_ext='npy', lab_ext='swc'):
+        samples = []
+        for imgfile in glob.glob(os.path.join(task_dir, f'*{img_ext}')):
+            labfile = f'{imgfile[:-len(img_ext)]}{lab_ext}'
+            samples.append((imgfile, labfile, self.target_spacing))
+        # data splitting
+        num_tot = len(samples)
+        num_par = int(round(num_tot * par_ratio))
+        num_val = int(round(num_tot * val_ratio))
+        num_test = int(round(num_tot * test_ratio))
+        num_train = num_tot - num_par - num_val - num_test
+        print(f'Number of samples of total/par/train/val/test are {num_tot}/{num_par}/{num_train}/{num_val}/{num_test}')
         
+        np.random.seed(seed)
+        np.random.shuffle(samples)
+        splits = {}
+        splits['train'] = samples[:num_train]
+        splits['par'] = samples[:num_train+num_par]
+        splits['val'] = samples[num_train:num_train+num_val+num_par]
+        splits['test'] = samples[-num_test:]
+        # write to file
+        with open(os.path.join(output_dir, 'data_splits_withPar.pkl'), 'wb') as fp:
+            pickle.dump(splits, fp)   
 
         
 if __name__ == '__main__':
     data_dir = '/PBshare/lyf/transtation/seu_mouse/crop_data/dendriteImageSecR/'
     spacing_file = '/home/lyf/data/seu_mouse/crop_data/scripts/AllbrainResolutionInfo.csv'
-    output_dir = '/home/lyf/Research/auto_trace/neuronet/data/task0007_cropAll_ellipse'
+    output_dir = '/home/lyf/Research/auto_trace/neuronet/data/task0005_cropAll'
     is_train = True
     num_threads = 8
     gp = GenericPreprocessor()
     gp.run(data_dir, spacing_file, output_dir, is_train=is_train, num_threads=num_threads)
-    gp.dataset_split(output_dir, val_ratio=0.06, test_ratio=0.03, seed=1024, img_ext='npz', lab_ext='swc')
+    gp.dataset_split2(output_dir, par_ratio=0.1, val_ratio=0.06, test_ratio=0.03, seed=1024, img_ext='npz', lab_ext='swc')
     
 
