@@ -281,8 +281,8 @@ class GenericPreprocessor(object):
         np.random.shuffle(samples)
         splits = {}
         splits['train'] = samples[:num_train]
-        splits['par'] = samples[:num_train+num_par]
-        splits['val'] = samples[num_train:num_train+num_val+num_par]
+        splits['par'] = samples[num_train:num_train+num_par]
+        splits['val'] = samples[num_train+num_par:num_train+num_val+num_par]
         splits['test'] = samples[-num_test:]
         # write to file
         with open(os.path.join(output_dir, 'data_splits_withPar.pkl'), 'wb') as fp:
@@ -292,7 +292,7 @@ class GenericPreprocessor(object):
 if __name__ == '__main__':
     data_dir = '/PBshare/lyf/transtation/seu_mouse/crop_data/dendriteImageSecR/'
     spacing_file = '/home/lyf/data/seu_mouse/crop_data/scripts/AllbrainResolutionInfo.csv'
-    output_dir = '/home/lyf/Research/auto_trace/neuronet/data/task0005_cropAll'
+    output_dir = '/home/lyf/Research/auto_trace/neuronet/data/task0009_cropAll_ellipse_r15'
     is_train = True
     num_threads = 8
     gp = GenericPreprocessor()
