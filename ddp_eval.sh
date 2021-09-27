@@ -10,7 +10,7 @@
 #
 #================================================================
 
-exp_folder="exps/exp040"
+exp_folder="exps/exp048"
 mkdir -p $exp_folder
 #CUDA_VISIBLE_DEVICES=0 nohup python -u train.py --deterministic --max_epochs 50 --save_folder ${exp_folder} --amp > ${exp_folder}/fullsize_adam.log &
 
@@ -34,7 +34,6 @@ python -u -m torch.distributed.launch \
     --batch_size 1 \
     --evaluation \
     --checkpoint ${exp_folder}/final_model.pt \
-    --data_file data/test_data/for_shendian/tiff/data_splits.pkl
-    #--data_file data/task0005_cropAll/data_splits.pkl
+    --data_file data/task0005_cropAll/data_splits_withPar.pkl
     
 
