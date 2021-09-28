@@ -188,7 +188,7 @@ def validate(model, val_loader, crit_ce, crit_dice, epoch, debug=True, num_image
     if num_image_save == -1:
         num_image_save = 9999
 
-    if phase == 'test':
+    if phase == 'test' or phase == 'par':
         from neuronet.evaluation.multi_crop_evaluation import NonOverlapCropEvaluation, MostFitCropEvaluation
         
         noce = MostFitCropEvaluation(args.imgshape, args.ds_ratios)
@@ -199,7 +199,7 @@ def validate(model, val_loader, crit_ce, crit_dice, epoch, debug=True, num_image
     processed = -1
     for img,lab,imgfiles,swcfiles in val_loader:
         processed += 1
-        if phase == 'test':
+        if phase == 'test' or phase == 'par':
             ddp_print(f'==> processed: {processed}')
 
         img, lab = crop_data(img, lab)
@@ -207,7 +207,7 @@ def validate(model, val_loader, crit_ce, crit_dice, epoch, debug=True, num_image
         lab_d = lab.to(args.device)
         if phase == 'val':
             loss_ces, loss_dices, loss, logits = get_forward_eval(img_d, lab_d, crit_ce, crit_dice, model)
-        elif phase == 'test':
+        elif phase == 'test' or phase == 'par':
             n_ens = 4 if args.eval_flip else 1
             for ie in range(n_ens):
                 if ie == 0:
