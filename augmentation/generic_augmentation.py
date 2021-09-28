@@ -690,7 +690,7 @@ class InstanceAugmentation(object):
                 ConvertToFloat(),
                 RandomCrop(1.0, imgshape, crop_range=(1,1)),
             ])
-        elif phase == 'test':
+        elif phase == 'test' or phase == 'par':
             self.augment = Compose([
                 ConvertToFloat(),
                 #CenterCropKeepRatio(1.0, imgshape),

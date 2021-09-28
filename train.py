@@ -292,7 +292,7 @@ def load_dataset(phase, imgshape):
     return loader, dset_iter
 
 def evaluate(model, optimizer, crit_ce, crit_dice, imgshape, phase='test'):
-    val_loader, val_iter = load_dataset(args.phase, imgshape)
+    val_loader, val_iter = load_dataset(phase, imgshape)
     args.curr_epoch = 0
     loss_ce, loss_dice, loss = validate(model, val_loader, crit_ce, crit_dice, epoch=0, debug=True, num_image_save=-1, phase=phase)
     ddp_print(f'Average loss_ce and loss_dice: {loss_ce:.5f} {loss_dice:.5f}')
@@ -456,7 +456,7 @@ def main():
     ddp_print(f'   {args}')
  
     if args.evaluation:
-        evaluate(model, optimizer, crit_ce, crit_dice, args.imgshape)
+        evaluate(model, optimizer, crit_ce, crit_dice, args.imgshape, args.phase)
     else:
         train(model, optimizer, crit_ce, crit_dice, args.imgshape)
 
