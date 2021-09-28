@@ -32,9 +32,9 @@ python -u -m torch.distributed.launch \
     --deterministic \
     --amp \
     --image_shape 128,160,160 \
+    --phase par \
     --batch_size 1 \
     --evaluation \
-    --phase par \
     --checkpoint ${exp_folder}/final_model.pt \
     --data_file data/task0005_cropAll/data_splits_withPar.pkl
     
