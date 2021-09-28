@@ -37,34 +37,44 @@ class GenericDataset(tudata.Dataset):
     
     @staticmethod
     def load_data_list(split_file, phase):
-        with open(split_file, 'rb') as fp:
-            data_dict = pickle.load(fp)
-        #return data_dict[phase]
-
-        if phase != 'test':
-            return data_dict[phase]
-        else:
-            dd = data_dict['test'] + data_dict['val']
-            #return dd
-            
+        # define helper function for single soma extraction
+        def extract_single_soma(dd, list_file):
             new_datas = []
-            # remove multi-soma crops 
+            # remove multi-soma crops
             # read simple-soma data list
-            img_list_file = './data/img_singleSoma.list'
-            with open(img_list_file) as fp: 
+            with open(list_file) as fp:
                 imglist = []
                 for line in fp.readlines():
                     line = line.strip()
                     if not line: continue
                     imglist.append(line)
             imglist = set(imglist)
-            for sample in dd: 
+            for sample in dd:
                 imgfile = sample[0]
                 prefix = os.path.splitext(os.path.split(imgfile)[-1])[0]
                 if prefix in imglist:
                     new_datas.append(sample)
             return new_datas
-            
+
+        with open(split_file, 'rb') as fp:
+            data_dict = pickle.load(fp)
+        #return data_dict[phase]
+
+        if phase == 'train' or phase == 'val':
+            return data_dict[phase]
+        elif phase == 'par':
+            list_file = './data/par_set_singleSoma.list'
+            dd = extract_single_soma(data_dict['par'], list_file)
+
+            return dd
+        elif phase == 'test':
+            dd = data_dict['test'] + data_dict['val']
+            list_file = './data/img_singleSoma.list'
+            dd = extract_single_soma(dd, list_file)
+            return dd
+        else:
+            raise ValueError
+           
 
     def __getitem__(self, index):
         img, gt, imgfile, swcfile = self.pull_item(index)

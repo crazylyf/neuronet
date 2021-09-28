@@ -76,6 +76,7 @@ parser.add_argument('--checkpoint', default='', type=str,
                     help='Saved checkpoint')
 parser.add_argument('--evaluation', action='store_true',
                     help='evaluation')
+parser.add_argument('--phase', default='train')
 parser.add_argument('--eval_flip', action='store_true',
                     help='whether flip image to do sample ensemble')
 parser.add_argument('--lr_steps', default='40,50,60,70,80,90,95', type=str,
@@ -290,8 +291,7 @@ def load_dataset(phase, imgshape):
     dset_iter = iter(loader)
     return loader, dset_iter
 
-def evaluate(model, optimizer, crit_ce, crit_dice, imgshape):
-    phase = 'test'
+def evaluate(model, optimizer, crit_ce, crit_dice, imgshape, phase='test'):
     val_loader, val_iter = load_dataset(phase, imgshape)
     args.curr_epoch = 0
     loss_ce, loss_dice, loss = validate(model, val_loader, crit_ce, crit_dice, epoch=0, debug=True, num_image_save=-1, phase=phase)
@@ -456,7 +456,7 @@ def main():
     ddp_print(f'   {args}')
  
     if args.evaluation:
-        evaluate(model, optimizer, crit_ce, crit_dice, args.imgshape)
+        evaluate(model, optimizer, crit_ce, crit_dice, args.imgshape, args.phase)
     else:
         train(model, optimizer, crit_ce, crit_dice, args.imgshape)
 
