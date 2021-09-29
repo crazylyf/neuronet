@@ -184,7 +184,7 @@ class GenericPreprocessor(object):
                 for leaf in tree:
                     if leaf[-1] == -1:
                         soma_pos = leaf[2:5]
-            image = soma_labelling_ellipse(image, r=15, soma_pos=soma_pos)
+            image = soma_labelling_ellipse(image, r=12, soma_pos=soma_pos)
 
         if image.ndim == 3:
             image = image[None]
@@ -218,7 +218,7 @@ class GenericPreprocessor(object):
         # estimate the target spacing
         spacings = [spacing for _,_,spacing in data_list]
         self.target_spacing = self.get_target_spacing(spacings)
-
+    
         '''
         maybe_mkdir_p(output_dir)
         # execute preprocessing
@@ -292,7 +292,7 @@ class GenericPreprocessor(object):
 if __name__ == '__main__':
     data_dir = '/PBshare/lyf/transtation/seu_mouse/crop_data/dendriteImageSecR/'
     spacing_file = '/home/lyf/data/seu_mouse/crop_data/scripts/AllbrainResolutionInfo.csv'
-    output_dir = '/home/lyf/Research/auto_trace/neuronet/data/task0009_cropAll_ellipse_r15'
+    output_dir = '/home/lyf/Research/auto_trace/neuronet/data/task0007_cropAll_ellipse'
     is_train = True
     num_threads = 8
     gp = GenericPreprocessor()

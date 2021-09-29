@@ -10,7 +10,7 @@
 #
 #================================================================
 
-exp_folder="exps/exp049"
+exp_folder="exps/exp054"
 mkdir -p $exp_folder
 #CUDA_VISIBLE_DEVICES=0 nohup python -u train.py --deterministic --max_epochs 50 --save_folder ${exp_folder} --amp > ${exp_folder}/fullsize_adam.log &
 
