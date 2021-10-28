@@ -241,6 +241,20 @@ class CLAHETransform(AbstractTransform):
 
         return img[None], tree, spacing
 
+class EqHistTransform(AbstractTransform):
+    def __init__(self, p=1.0):
+        super(EqHistTransform, self).__init__(p)
+
+    def __call__(self, img, tree=None, spacing=None):
+        if np.random.random() < self.p:
+            assert img.shape[0] == 1
+            img = exposure.equalize_hist(img[0], nbins=256)
+            vmax = img.max()
+            vmin = img.min()
+            img = (img - img.min()) / (img.max() - img.min() + 1e-7) * (vmax - vmin) + vmin
+
+        return img[None], tree, spacing
+
 class RandomGammaTransform(AbstractTransform):
     def __init__(self, p, gamma_range=(0.5,2), invert_image=False, per_channel=False, retain_stats=False):
         super(RandomGammaTransform, self).__init__(p)
@@ -695,9 +709,10 @@ class InstanceAugmentation(object):
                 ConvertToFloat(),
                 #CenterCropKeepRatio(1.0, imgshape),
                 #ResizeToDividable(divid),
-                GammaTransform(gamma=0.4, trunc_thresh=0.216, retain_stats=True),  #0.2->0.133
+                #GammaTransform(gamma=0.4, trunc_thresh=0.216, retain_stats=True),  #0.2->0.133
                 #GammaTransform(gamma=0.4, trunc_thresh=0, retain_stats=True),  #0.2->0.133
                 #CLAHETransform(p=1.0, kernel_size=(16,32,32))
+                EqHistTransform(p=1.0)
             ])
         else:
             raise NotImplementedError

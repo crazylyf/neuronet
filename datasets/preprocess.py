@@ -47,7 +47,7 @@ def load_data(data_dir, spacing_file, is_train=True):
         brain_id = os.path.split(brain_dir)[-1]
         print('--> Loading for brain: {:s}'.format(brain_id))
         spacing = spacing_dict[int(brain_id)]
-        swc_dir = os.path.join(data_dir, 'swc', brain_id)
+        swc_dir = os.path.join(data_dir, 'app2', brain_id)
         for imgfile in glob.glob(os.path.join(brain_dir, '*.tiff')):
             prefix = get_file_prefix(imgfile)
             if is_train:
@@ -260,7 +260,7 @@ class GenericPreprocessor(object):
 if __name__ == '__main__':
     data_dir = '/PBshare/lyf/transtation/seu_mouse/crop_data/dendriteImageSecR/'
     spacing_file = '/home/lyf/data/seu_mouse/crop_data/scripts/AllbrainResolutionInfo.csv'
-    output_dir = '/home/lyf/Research/auto_trace/neuronet/data/task0003_cropAll'
+    output_dir = '/home/lyf/Research/auto_trace/neuronet/data/task0005_cropAll_app2Label'
     is_train = True
     num_threads = 8
     gp = GenericPreprocessor()
