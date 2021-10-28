@@ -35,6 +35,6 @@ python -u -m torch.distributed.launch \
     --test_frequency 3 \
     --image_shape 128,160,160 \
     --batch_size 1 \
-    --data_file data/task0005_cropAll_app2Label/data_splits.pkl \
+    --data_file data/task0005_cropAll/data_splits.pkl \
     > ${exp_folder}/train.log & 
 
