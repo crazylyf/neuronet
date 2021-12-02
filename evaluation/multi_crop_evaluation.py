@@ -227,7 +227,7 @@ class MostFitCropEvaluation(GenericMultiCropEvaluation):
                         xe = None
                         xs = -size_x
                     #NOTE: it is definitely better to combines results for overlap regions. to be optimized later.    
-                    idx = xi + yi * ncrops[1] + zi * ncrops[1] * ncrops[2]
+                    idx = xi + yi * ncrops[2] + zi * ncrops[1] * ncrops[2]
                     pred[:, zs:ze, ys:ye, xs:xe] = preds[idx]
         
         return pred[:,:imgshape[0],:imgshape[1],:imgshape[2]]

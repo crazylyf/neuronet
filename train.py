@@ -430,6 +430,9 @@ def main():
         checkpoint = torch.load(args.checkpoint, map_location={'cuda:0':f'cuda:{args.local_rank}'})
         model.load_state_dict(checkpoint.module.state_dict())
         del checkpoint
+        #if args.is_master:
+        #    torch.save(checkpoint.module.state_dict(), "exp040.state_dict")
+        #    sys.exit()
     
     # convert to distributed data parallel model
     model = DDP(model, device_ids=[args.local_rank],
