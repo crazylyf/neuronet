@@ -191,6 +191,15 @@ def inference(model, image):
 
     return probs
     
+def fuse_image(img, seg, alpha=0.8, eps=1e-7):
+    img = img.astype(np.float32)
+    seg = seg.astype(np.float32)
+    img = (img - img.min()) / (img.max() - img.min() + eps)
+    seg = (seg - seg.min()) / (seg.max() - seg.min() + eps)
+    fused = alpha * img + (1 - alpha) * seg
+    # rescale to [0, 255]
+    fused = (fused * 255).astype(np.uint8)
+    return fused
 
 def main(): 
     gpu_id = 0
@@ -247,10 +256,12 @@ def main():
         print(f'Statistics of segmentation: {seg.mean()}, {seg.std()}, {seg.min()}, {seg.max()}')
         # convert to uint8 and send back
         seg = (seg * 255).astype(np.uint8)
+        # fusing with original image
+        fused = fuse_image(image[0], seg, 0.8)
         #save_image('seg.tiff', seg)
-        seg = seg.reshape(-1).tolist()
+        fused = fused.reshape(-1).tolist()
         repl = {}
-        repl['img'] = seg
+        repl['img'] = fused
         socket.send_json(repl)
 
 
