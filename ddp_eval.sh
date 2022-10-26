@@ -10,7 +10,8 @@
 #
 #================================================================
 
-exp_folder="exps/exp040"
+exp_folder="exps/exp048"
+save_folder="./eval"
 mkdir -p $exp_folder
 #CUDA_VISIBLE_DEVICES=0 nohup python -u train.py --deterministic --max_epochs 50 --save_folder ${exp_folder} --amp > ${exp_folder}/fullsize_adam.log &
 
@@ -28,7 +29,7 @@ python -u -m torch.distributed.launch \
     --nnodes=$NUM_NODES \
     --node_rank $NODE_RANK \
     train.py \
-    --save_folder ${exp_folder} \
+    --save_folder ${save_folder} \
     --deterministic \
     --phase test \
     --amp \
@@ -36,6 +37,6 @@ python -u -m torch.distributed.launch \
     --batch_size 1 \
     --evaluation \
     --checkpoint ${exp_folder}/final_model.pt \
-    --data_file data/task0005_cropAll/data_splits.pkl
+    --data_file data/task0005_brains2/data_splits.pkl
     
 

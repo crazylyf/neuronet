@@ -43,11 +43,11 @@ def load_data(data_dir, spacing_file, is_train=True):
     spacing_dict = load_spacing(spacing_file)
     # get all annotated data
     data_list = []
-    for brain_dir in glob.glob(os.path.join(data_dir, 'tiff', '*')):
+    for brain_dir in glob.glob(os.path.join(data_dir, 'crops_tiff', '*')):
         brain_id = os.path.split(brain_dir)[-1]
         print('--> Loading for brain: {:s}'.format(brain_id))
         spacing = spacing_dict[int(brain_id)]
-        swc_dir = os.path.join(data_dir, 'app2', brain_id)
+        swc_dir = os.path.join(data_dir, 'swc_cropped', brain_id)
         for imgfile in glob.glob(os.path.join(brain_dir, '*.tiff')):
             prefix = get_file_prefix(imgfile)
             if is_train:
@@ -68,9 +68,10 @@ def calc_spacing_anisotropy(spacing):
 
 
 class GenericPreprocessor(object):
-    def __init__(self, separate_z_thresh=2, label_soma=True):
+    def __init__(self, separate_z_thresh=2, label_soma=True, spacing=None):
         self.separate_z_thresh = separate_z_thresh
         self.label_soma = label_soma
+        self.spacing = spacing
 
     def remove_nans(self, data):
         # inplace modification of nans
@@ -106,7 +107,7 @@ class GenericPreprocessor(object):
         data = data.astype(np.float32)  # float32 is sufficient
         shape = np.array(data[0].shape)
         new_shape = np.round(((np.array(orig_spacing) / np.array(target_spacing)).astype(np.float32) * shape)).astype(int)
-        #print(new_shape)
+        print(shape, new_shape, orig_spacing, target_spacing)
         # do resizing
         if np.all(shape == new_shape):
             print('no resampling necessary')
@@ -209,7 +210,10 @@ class GenericPreprocessor(object):
         print(f'Total number of samples found: {len(data_list)}')
         # estimate the target spacing
         spacings = [spacing for _,_,spacing in data_list]
-        self.target_spacing = self.get_target_spacing(spacings)
+        if self.spacing is None:
+            self.target_spacing = self.get_target_spacing(spacings)
+        else:
+            self.target_spacing = self.spacing
 
 
         maybe_mkdir_p(output_dir)
@@ -258,13 +262,13 @@ class GenericPreprocessor(object):
 
         
 if __name__ == '__main__':
-    data_dir = '/PBshare/lyf/transtation/seu_mouse/crop_data/dendriteImageSecR/'
-    spacing_file = '/home/lyf/data/seu_mouse/crop_data/scripts/AllbrainResolutionInfo.csv'
-    output_dir = '/home/lyf/Research/auto_trace/neuronet/data/task0005_cropAll_app2Label'
-    is_train = True
+    data_dir = '/home/lyf/Research/auto_trace/neuronet/data/additional_crops'
+    spacing_file = '/PBshare/SEU-ALLEN/Users/yfliu/transtation/seu_mouse/swc/AllbrainResolutionInfo_20210822.csv'
+    output_dir = '/home/lyf/Research/auto_trace/neuronet/data/task0005_brains2'
+    is_train = False
     num_threads = 8
-    gp = GenericPreprocessor()
+    gp = GenericPreprocessor(spacing=[1.0,0.23,0.23])
     gp.run(data_dir, spacing_file, output_dir, is_train=is_train, num_threads=num_threads)
-    gp.dataset_split(output_dir, val_ratio=0.06, test_ratio=0.03, seed=1024, img_ext='npz', lab_ext='swc')
+    gp.dataset_split(output_dir, val_ratio=0, test_ratio=1., seed=1024, img_ext='npz', lab_ext='swc')
     
 

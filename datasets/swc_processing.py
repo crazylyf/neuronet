@@ -144,6 +144,7 @@ def load_spacing(spacing_file, zyx_order=True):
         for line in fp.readlines():
             line = line.strip()
             if not line: continue
+            if line[0] == '#': continue
 
             brain_id, xs, ys, zs = line.split(',')
             if zyx_order:

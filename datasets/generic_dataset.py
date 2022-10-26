@@ -70,7 +70,8 @@ class GenericDataset(tudata.Dataset):
             return dd
         elif phase == 'test':
             dd = data_dict['test'] + data_dict['val']
-            list_file = './data/img_singleSoma.list'
+            #list_file = './data/img_singleSoma.list'
+            list_file = './data/additional_crops/single_soma.list'
             dd = extract_single_soma(dd, list_file)
             return dd 
         else:
