@@ -709,10 +709,10 @@ class InstanceAugmentation(object):
                 ConvertToFloat(),
                 #CenterCropKeepRatio(1.0, imgshape),
                 #ResizeToDividable(divid),
-                #GammaTransform(gamma=0.4, trunc_thresh=0.216, retain_stats=True),  #0.2->0.133
+                GammaTransform(gamma=0.4, trunc_thresh=0.216, retain_stats=True),  #0.2->0.133
                 #GammaTransform(gamma=0.4, trunc_thresh=0, retain_stats=True),  #0.2->0.133
                 #CLAHETransform(p=1.0, kernel_size=(16,32,32))
-                EqHistTransform(p=1.0)
+                #EqHistTransform(p=1.0)
             ])
         else:
             raise NotImplementedError

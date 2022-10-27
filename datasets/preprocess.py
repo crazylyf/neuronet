@@ -237,10 +237,13 @@ class GenericPreprocessor(object):
         pt.join()
 
 
-    def dataset_split(self, task_dir, val_ratio=0.1, test_ratio=0.1, seed=1024, img_ext='npy', lab_ext='swc'):
+    def dataset_split(self, task_dir, val_ratio=0.1, test_ratio=0.1, seed=1024, img_ext='npy', lab_ext='swc', is_train=True):
         samples = []
         for imgfile in glob.glob(os.path.join(task_dir, f'*{img_ext}')):
-            labfile = f'{imgfile[:-len(img_ext)]}{lab_ext}'
+            if is_train:
+                labfile = f'{imgfile[:-len(img_ext)]}{lab_ext}'
+            else:
+                labfile = None
             samples.append((imgfile, labfile, self.target_spacing))
         # data splitting
         num_tot = len(samples)
