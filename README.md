@@ -1,9 +1,16 @@
 # neuronet
 neural network project specially designed for neuron segmentation
 
-### TODO
-- [ ] Validation of current version
-- [ ] Test for Instanc segmentation
-- [ ] More Augmentations
-- [ ] Better network visualization and debugging
-- [ ] Wrapper for semantic segmentation
+# requirement
+- numpy
+- scipy
+- scikit-image
+- SimpleITK
+- batchgenerators
+- pylib: https://github.com/crazylyf/pylib
+
+# usage
+- train: ./ddp_train.sh
+- evaluation: ./ddp_eval.sh
+
+# The Readme to be updated
