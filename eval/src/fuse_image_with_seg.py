@@ -201,7 +201,7 @@ class SegTracer(object):
 
 if __name__ == '__main__':
     img_dir = '../../data/additional_crops/crops_tiff'
-    pred_dir = '../exp048_brains2'
+    pred_dir = '../exp040_brains2'
     target_shape = (256,512,512)
     tgamma = 0
     trunc_thresh = 0.4

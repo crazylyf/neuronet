@@ -192,9 +192,9 @@ if __name__ == '__main__':
     crop_box = (256,512,512)
     base_method = 'smartTrace'
     gt_dir = f'../../data/additional_crops/swc_cropped'
-    app2_dir = '../../data/additional_crops/smartTrace'
+    app2_dir = f'../../data/additional_crops/{base_method}'
     #pred_dir = f'/home/lyf/Temp/exp040/vanilla/fused_tg0.0_alpha0.8_vanilla_bgMask0'
-    pred_dir = f'../exp048_brains2/fused_tg0.0_alpha0.8_vanilla_bgMask0/smartTrace'
+    pred_dir = f'../exp040_brains2/fused_tg0.0_alpha0.8_vanilla_bgMask0/{base_method}'
 
 
     mapper, img_dict = get_image_brain_mapping()

@@ -82,8 +82,8 @@ if __name__ == "__main__":
     
     # APP2 tracing
     nproc = 4
-    tracer = 'app2' # 'smartTrace'
-    imgdir = './imgpreprocess/enh'
+    tracer = 'smartTrace'
+    imgdir = '../exp040_brains2/fused_tg0.0_alpha0.8_vanilla_bgMask0'
     marker_file = '/PBshare/SEU-ALLEN/Users/yfliu/transtation/seu_mouse/configs/m_256_256_128.marker'
     mapper, img_dict = get_image_brain_mapping()
     executable = '/PBshare/SEU-ALLEN/Users/zuohan/vaa3d/start_vaa3d.sh'

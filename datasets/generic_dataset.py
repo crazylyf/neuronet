@@ -69,10 +69,19 @@ class GenericDataset(tudata.Dataset):
                 
             return dd
         elif phase == 'test':
-            dd = data_dict['test'] + data_dict['val']
-            #list_file = './data/img_singleSoma.list'
-            list_file = './data/additional_crops/single_soma.list'
-            dd = extract_single_soma(dd, list_file)
+            dd = data_dict['test']
+            # filtering, for debug only!
+            #new_dd = []
+            #for di in dd:
+            #    prefix = os.path.splitext(os.path.split(di[0])[-1])[0]
+            #    if not os.path.exists(f'/media/data/lyf/SEU-ALLEN/neuronet_1741/debug_{prefix}_test_img.tiff'):
+            #        new_dd.append(di)
+            #dd = new_dd
+            #print(len(dd))
+
+            ##list_file = './data/img_singleSoma.list'
+            #list_file = './data/additional_crops/single_soma.list'
+            #dd = extract_single_soma(dd, list_file)
             return dd 
         else:
             raise ValueError

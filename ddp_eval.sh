@@ -10,8 +10,8 @@
 #
 #================================================================
 
-exp_folder="exps/exp048"
-save_folder="./eval"
+exp_folder="exps/exp040"
+save_folder="/media/data/lyf/SEU-ALLEN/neuronet_1741"
 mkdir -p $exp_folder
 #CUDA_VISIBLE_DEVICES=0 nohup python -u train.py --deterministic --max_epochs 50 --save_folder ${exp_folder} --amp > ${exp_folder}/fullsize_adam.log &
 
@@ -37,6 +37,6 @@ python -u -m torch.distributed.launch \
     --batch_size 1 \
     --evaluation \
     --checkpoint ${exp_folder}/final_model.pt \
-    --data_file data/task0005_brains2/data_splits.pkl
+    --data_file data/task0005_cropAll/data_splits_all_test.pkl
     
 
